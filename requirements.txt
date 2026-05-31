@@ -2,4 +2,8 @@ langgraph
 langchain-core
 langchain-community 
 tavily-python
-langchain_google_genai
+langchain-chroma
+requests
+bs4
+sentence-transformers
+langchain-huggingface
