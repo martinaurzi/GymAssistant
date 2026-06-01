@@ -7,3 +7,5 @@ requests
 bs4
 sentence-transformers
 langchain-huggingface
+neo4j 
+langchain_google_genai

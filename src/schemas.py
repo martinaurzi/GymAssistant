@@ -1,4 +1,4 @@
-from typing import Annotated, TypedDict
+from typing import Annotated, TypedDict, Dict, Any
 from langchain_core.messages import BaseMessage
 from langgraph.graph import add_messages
 from pydantic import BaseModel, Field
@@ -7,6 +7,8 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages] # storia dei messaggi
     retrived_documents: list[str] # RAG
     post_draft: PostFormat | None
+    kg_summary: str #contiene i topic già trattati e titolo,categoria e topic dei post piu recenti
+    kg_consistency_context: str #contiene titoli e claim dei post relativi al topic corrente
 
 class PostFormat(BaseModel):
     category: str = Field(description="La categoria scelta (es. HOW_TO, REVIEW, NEWS, EVENTS)")

@@ -10,11 +10,12 @@ from prompts import SYSTEM_PROMPT, FORMAT_ARTICLE_PROMPT
 
 from tools.web_search_tool import web_search_tool
 from tools.rag_tool import rag_tool
+from tools.knowledge_graph_tool import knowledge_graph_tool
 
 load_dotenv(".env")
 
 # Lista di tool
-tools = [web_search_tool, rag_tool] 
+tools = [web_search_tool, rag_tool, knowledge_graph_tool] 
 tools_by_name = {tool.name: tool for tool in tools}
 
 # Inizializzazione del modello
@@ -22,20 +23,22 @@ llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 
 # Diamo accesso al modello ai tool
 llm_with_tools = llm.bind_tools(tools)
-
+    
 def llm_node(state: AgentState):
     """Il modello analizza lo stato corrente e decide se chiamare un tool oppure fornire la risposta finale.
 
         Restituisce lo stato aggiornato con la risposta del modello
     """
+    # Usiamo .get("kg_summary", "") per prendere il contesto e restituire una stringa vuota nella prima esecuzione
+    blog_history_content = state.get("kg_summary", "")
     
-    # Deve essere sostituito dal Knowledge Graph
-    MOCK_BLOG_HISTORY = """
-    - Post 1 - HOW TO: "Esercizi spalle con manubri"- Pubblicato il 15/05/2026
-    - Post 2 - REVIEW: "Recensione cintura per trazioni" - Pubblicato il 22/05/2026
-    """
-
-    response = llm_with_tools.invoke([SystemMessage(content=SYSTEM_PROMPT.format(blog_history=MOCK_BLOG_HISTORY))] + state["messages"]) # Uniamo il SYSTEM PROMPT con la cronologia di messaggi
+    # Formattiamo il SYSTEM_PROMPT in modo sicuro
+    formatted_system_prompt = SYSTEM_PROMPT.format(blog_history=blog_history_content)
+    
+    # Invocazione del modello
+    response = llm_with_tools.invoke(
+        [SystemMessage(content=formatted_system_prompt)] + state["messages"]
+    )
 
     return {"messages": [response]}
 
@@ -50,6 +53,8 @@ def tool_node(state: AgentState):
 
     tool_outputs = []
     rag_retrieved_docs = []
+    summary_txt = state.get("kg_summary", "")
+    consistency_txt = state.get("kg_consistency_context", "")
 
     # Eseguiamo tutte le chiamate ai tool
     for tool_call in tool_calls: 
@@ -58,6 +63,13 @@ def tool_node(state: AgentState):
         print(f"[TOOL] L'agente ha richiesto il tool: '{tool_call["name"]}' con argomenti: {tool_call['args']}")
 
         observation = tool.invoke(tool_call["args"]) 
+
+        if tool_call["name"] == "knowledge_graph_tool":
+            observation_str = str(observation)
+            if observation_str.startswith("Contenuto Storico:"):
+                summary_txt = observation_str
+            elif observation_str.startswith("Contenuti correlati:"):
+                consistency_txt = observation_str
 
         # Verifichiamo se è stato chiamato il tool RAG
         if tool_call["name"] == "rag_tool" and observation: # observation non deve essere ""
@@ -75,18 +87,29 @@ def tool_node(state: AgentState):
         )
 
     return {
-        "messages": tool_outputs,
-        "retrived_documents": rag_retrieved_docs
+        "messages": tool_outputs, 
+        "retrived_documents": rag_retrieved_docs,
+        "kg_summary": summary_txt,
+        "kg_consistency_context": consistency_txt
     }
 
 def llm_format_node(state: AgentState):
     """Formatta le informazioni restituite dal tool di ricerca per generare la bozza dell'articolo"""
 
     print("[WRITER] Formatto l'articolo...")
+    
+    # Recuperiamo il contesto di coerenza salvato dallo state
+    consistency_data = state.get("kg_consistency_context", "")
+    if not consistency_data or consistency_data.strip() == "":
+        # !! VEDERE SE CONVIENE FORNIRE STRINGA VUOTA
+        consistency_data = "Nessun vincolo precedente trovato per questo argomento. Procedi liberamente."
+
+    # Iniettiamo dinamicamente il contesto nel prompt finale
+    formatted_prompt = FORMAT_ARTICLE_PROMPT.format(consistency_context=consistency_data)
 
     structured_output_llm = llm.with_structured_output(PostFormat)
 
-    results = structured_output_llm.invoke([SystemMessage(content=FORMAT_ARTICLE_PROMPT)] + state["messages"])
+    results = structured_output_llm.invoke([SystemMessage(content=formatted_prompt)] + state["messages"])
 
     return {"post_draft": results}
 
