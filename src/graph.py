@@ -11,7 +11,7 @@ from prompts import SYSTEM_PROMPT, FORMAT_ARTICLE_PROMPT
 
 from tools.web_search_tool import web_search_tool
 from tools.rag_tool import rag_tool
-from tools.knowledge_graph_tool import knowledge_graph_tool
+from tools.knowledge_graph_tool import knowledge_graph_tool, kg_manager
 
 load_dotenv(".env")
 
@@ -141,11 +141,44 @@ def should_continue(state: AgentState):
     else:
         return "format_article"
     
+def save_to_kg_node(state: AgentState):
+    """
+    Nodo finale del grafo: prende la bozza formattata dall'LLM, 
+    estrae i claim dal testo e salva tutto su Neo4j.
+    """
+    post = state["post_draft"]
+    requested_topic = state.get("requested_topic")
+    matched_topic = state.get("matched_topic", "")
+    
+    # Fallback sul titolo se l'LLM non ha popolato il requested_topic
+    if not requested_topic or requested_topic.strip() == "":
+        requested_topic = post.title
+
+    # Estrazione automatica dei Claim dalle righe del body
+    lines = [line.strip() for line in post.body.split("\n") if line.strip()]
+    claims_database = lines[:4] if lines else [f"Linee guida e indicazioni tecniche per {post.title}"]
+
+    print("\n[NEO4J NODO]: Salvataggio dell'articolo e aggiornamento delle relazioni in corso...")
+    
+    try:
+        kg_manager.add_approved_post(
+            post_draft=post.model_dump(), # Converte l'oggetto Pydantic in dizionario standard
+            requested_topic=requested_topic, 
+            matched_topic=matched_topic, 
+            claims=claims_database
+        )
+        print("[NEO4J NODO]: Knowledge Graph aggiornato con successo!")
+    except Exception as e:
+        print(f"[ERRORE NEO4J NODO]: Impossibile salvare il post: {str(e)}")
+
+    return state
+    
 graph = StateGraph(AgentState)
 
 graph.add_node("llm", llm_node)
 graph.add_node("tool", tool_node)
 graph.add_node("format", llm_format_node)
+graph.add_node("save_to_kg", save_to_kg_node)
 
 graph.add_edge(START, "llm")
 graph.add_conditional_edges(
@@ -157,6 +190,8 @@ graph.add_conditional_edges(
     }
 )
 graph.add_edge("tool", "llm")
-graph.add_edge("format", END)
+
+graph.add_edge("format", "save_to_kg")
+graph.add_edge("save_to_kg", END)
 
 agent = graph.compile()

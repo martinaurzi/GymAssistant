@@ -51,7 +51,9 @@ class EditorialKnowledgeGraphManager:
             
             posts_query = """
             MATCH (p:Post)-[:COVERS]->(t:Topic)
-            RETURN p.title AS title, p.category AS category, t.name AS topic
+            RETURN p.title AS title, 
+                p.category AS category, 
+                collect(t.name) AS topics  // Raggruppa i topic legati allo stesso post in una lista, se no mi restituisce lo stesso post più volte con un topic associato diverso
             ORDER BY p.createdAt DESC
             LIMIT 3
             """
@@ -61,7 +63,7 @@ class EditorialKnowledgeGraphManager:
                 {
                     "title": record["title"],
                     "category": record["category"],
-                    "topic": record["topic"]
+                    "topics": record["topics"]
                 }
                 for record in posts_res
             ]
@@ -72,10 +74,16 @@ class EditorialKnowledgeGraphManager:
             
             # Formattazione dello storico in una stringa leggibile
             topics_str = ", ".join(topics)
-            posts_formatted = [
-                f"{{'title': '{p['title']}', 'category': '{p['category']}', 'topic': '{p['topic']}'}}" 
-                for p in recent_posts
-            ]
+            posts_formatted = []
+            for p in recent_posts:
+                # Unisce i topic del singolo post separandoli con una virgola
+                p_topics_str = ", ".join(p['topics']) 
+                
+                # Costruisce la stringa del post e la aggiunge alla lista
+                posts_formatted.append(
+                    f"{{'title': '{p['title']}', 'category': '{p['category']}', 'topics': [{p_topics_str}]}}"
+            )
+            
             posts_str = " | ".join(posts_formatted)
             
             return f"Contenuto Storico: {{'covered_topics': [{topics_str}], 'recent_posts': [{posts_str}]}}"
