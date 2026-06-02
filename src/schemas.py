@@ -9,6 +9,8 @@ class AgentState(TypedDict):
     post_draft: PostFormat | None
     kg_summary: str #contiene i topic già trattati e titolo,categoria e topic dei post piu recenti
     kg_consistency_context: str #contiene titoli e claim dei post relativi al topic corrente
+    requested_topic: str  # Il topic scelto dall'LLM
+    matched_topic: str    # Il topic più simile trovato dall'indice vettoriale di Neo4j
 
 class PostFormat(BaseModel):
     category: str = Field(description="La categoria scelta (es. HOW_TO, REVIEW, NEWS, EVENTS)")

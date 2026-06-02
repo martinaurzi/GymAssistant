@@ -80,68 +80,95 @@ class EditorialKnowledgeGraphManager:
             
             return f"Contenuto Storico: {{'covered_topics': [{topics_str}], 'recent_posts': [{posts_str}]}}"
             
-    def search_similar_content(self, topic: str) -> str:
+    def search_similar_content(self, topic: str) -> dict:
         """Ricerca semantica per coerenza editoriale."""
         query_vector = self.embeddings.embed_query(topic)
         query = """
-        CALL db.index.vector.queryNodes('topic_index', 4, $vector)
-        YIELD node AS t, score
-        WHERE score > 0.5
+        MATCH (t:Topic)
+        WHERE t.embedding IS NOT NULL
+        WITH t, vector.similarity.cosine(t.embedding, $vector) AS score
+        WHERE score > 0.6
         ORDER BY score DESC
         LIMIT 1
-        
+
         WITH t
         MATCH (p:Post)-[:COVERS]->(t)
         OPTIONAL MATCH (p)-[:EXTRACTED]->(c:Claim)
-        RETURN p.title AS title, collect(c.text) AS claims LIMIT 2
+
+        RETURN t.name AS matched_topic,
+            p.title AS title,
+            collect(c.text) AS claims 
+        LIMIT 2
         """
         with self.driver.session() as session:
             result = session.run(query, vector=query_vector)
             records = list(result)
             if not records:
-                return "Nessun contenuto correlato trovato nel Knowledge Graph (con score sufficiente)."
+                return {
+                    "context": "Nessun contenuto correlato trovato nel Knowledge Graph (con score sufficiente).",
+                    "matched_topic": ""
+                }
+            
+            # Estraiamo il nome del topic trovato dal primo record
+            matched_topic_name = records[0]["matched_topic"]
             
             summary = "Contenuti correlati: \n"
             for r in records:
                 summary += f"- Nel post '{r['title']}' abbiamo affermato: {', '.join(r['claims'])}\n"
-            return summary
+            
+            return {
+                "context": summary,
+                "matched_topic": matched_topic_name
+            }
             
         
-    def add_approved_post(self, post_draft: dict, topic_name: str, claims: list):
+    def add_approved_post(self, post_draft: dict, requested_topic: str, matched_topic: str, claims: list):
         """
-        Aggiornamento del grafo incrementale dopo approvazione Human-in-the-loop.
+        Crea il post e lo associa tramite :COVERS sia al topic richiesto sia al topic affine trovato.
         """
-        # Generazione embedding del topic
-        topic_vector = self.embeddings.embed_query(topic_name)
+        # Generiamo l'embedding del topic principale dell'articolo
+        topic_vector = self.embeddings.embed_query(requested_topic)
    
-        # $ per evitare query injection
-        # con CREATE si forza la creazione di una nuova istanza, mentre MERGE controlla prima se un'istanza uguale esiste e poi la crea
         query = """
+        // Creazione del Post
         CREATE (p:Post {
             title: $title, 
-            category: $category, // vedere di creare Label separata
+            category: $category, 
             introduction: $introduction, 
             body: $body, 
             conclusion: $conclusion,
             createdAt: timestamp()
         })
-        MERGE (t:Topic {name: $topic_name})
+
+        // Associazione o creazione del Topic Principale richiesto dall'LLM
+        MERGE (t:Topic {name: $requested_topic})
         ON CREATE SET t.embedding = $topic_embedding
         ON MATCH SET t.embedding = $topic_embedding 
-        
         CREATE (p)-[:COVERS]->(t)
-        
+
+        // Associazione condizionale al Topic Simile Preesistente
+        CALL (p){ //per rendere disponibile p all'interno al posto di dover usare 2 volte WITH P
+            WITH p
+            WHERE $matched_topic IS NOT NULL 
+            AND $matched_topic <> "" 
+            AND $matched_topic <> $requested_topic
+            
+            MATCH (oldT:Topic {name: $matched_topic})
+            MERGE (p)-[:COVERS]->(oldT)
+        }
+
+        // Srotolamento delle Fonti
         WITH p
         UNWIND $sources AS src_url
         MERGE (s:Source {url: src_url})
         CREATE (p)-[:USED_SOURCE]->(s)
-        
+
+        // Srotolamento dei Claims
         WITH p
         UNWIND $claims AS claim_text
         CREATE (c:Claim {text: claim_text})
         CREATE (p)-[:EXTRACTED]->(c)
         """
-        # UNWIND serve per srotolare la lista di stringhe e far eseguire l'operazione successiva un numero di volte pari agli elementi della lista
         
         with self.driver.session() as session:
             session.run(
@@ -151,8 +178,9 @@ class EditorialKnowledgeGraphManager:
                 introduction=post_draft['introduction'],
                 body=post_draft['body'],
                 conclusion=post_draft['conclusion'],
-                topic_name=topic_name,
+                requested_topic=requested_topic,
                 topic_embedding=topic_vector,
+                matched_topic=matched_topic,
                 sources=post_draft['sources'],
                 claims=claims
             )

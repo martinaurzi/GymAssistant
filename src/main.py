@@ -34,11 +34,18 @@ claims_database = lines[:4] if lines else [f"Linee guida e indicazioni tecniche 
 # Converte l'oggetto Pydantic in dizionario standard
 post_dict = post.model_dump()
 
+requested_topic = result.get("requested_topic") #get più sicura perchè non va in crush se non ci restituisce niente
+if not requested_topic or requested_topic.strip() == "":
+    requested_topic = post.title  # Fallback sul titolo se l'LLM non ha chiamato il tool
+
+matched_topic = result.get("matched_topic", "") # Ritorna stringa vuota se non c'è match
+
 try:
     print("[NEO4J]: Salvataggio dell'articolo e aggiornamento delle relazioni...")
     kg_manager.add_approved_post(
         post_draft=post_dict, 
-        topic_name=post.title, 
+        requested_topic=requested_topic, 
+        matched_topic=matched_topic, 
         claims=claims_database
     )
     print("[NEO4J]: Grafo aggiornato con successo!")

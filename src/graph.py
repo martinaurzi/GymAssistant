@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+import json
 
 from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
@@ -53,8 +54,12 @@ def tool_node(state: AgentState):
 
     tool_outputs = []
     rag_retrieved_docs = []
+    
     summary_txt = state.get("kg_summary", "")
     consistency_txt = state.get("kg_consistency_context", "")
+    
+    requested_topic_txt = state.get("requested_topic", "")
+    matched_topic_txt = state.get("matched_topic", "")
 
     # Eseguiamo tutte le chiamate ai tool
     for tool_call in tool_calls: 
@@ -68,8 +73,20 @@ def tool_node(state: AgentState):
             observation_str = str(observation)
             if observation_str.startswith("Contenuto Storico:"):
                 summary_txt = observation_str
-            elif observation_str.startswith("Contenuti correlati:"):
-                consistency_txt = observation_str
+            else:
+                try:
+                    # Estraiamo comodamente tutte e tre le informazioni passate dal tool
+                    data = json.loads(observation_str)
+                    
+                    consistency_txt = data["context"]
+                    requested_topic_txt = data["requested_topic"]  # <-- Preso direttamente dal JSON
+                    matched_topic_txt = data["matched_topic"]
+                    
+                    # Consegniamo all'LLM solo il testo pulito, nascondendo i metadati del JSON
+                    observation_str = data["context"]
+                except Exception as e:
+                    print(f"[ERRORE PARSING JSON TOOL]: {e}")
+                    consistency_txt = observation_str
 
         # Verifichiamo se è stato chiamato il tool RAG
         if tool_call["name"] == "rag_tool" and observation: # observation non deve essere ""
@@ -90,7 +107,9 @@ def tool_node(state: AgentState):
         "messages": tool_outputs, 
         "retrived_documents": rag_retrieved_docs,
         "kg_summary": summary_txt,
-        "kg_consistency_context": consistency_txt
+        "kg_consistency_context": consistency_txt,
+        "requested_topic": requested_topic_txt,  
+        "matched_topic": matched_topic_txt
     }
 
 def llm_format_node(state: AgentState):
