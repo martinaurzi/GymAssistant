@@ -1,4 +1,4 @@
-from typing import Annotated, Literal, Optional, TypedDict, Union
+from typing import Annotated, Literal, Optional, TypedDict, Dict, Any, Union
 from langchain_core.messages import BaseMessage, ToolMessage
 from langgraph.graph import add_messages
 from pydantic import BaseModel, Field
@@ -13,6 +13,10 @@ class AgentState(TypedDict):
     tool_outputs: Annotated[list[ToolMessage], add_messages]
     retrived_documents: list[str] # RAG
     post_draft: Annotated[PostFormat, lambda old_draft, new_draft: new_draft]
+    kg_summary: str #contiene i topic già trattati e titolo,categoria e topic dei post piu recenti
+    kg_consistency_context: str #contiene titoli e claim dei post relativi al topic corrente
+    requested_topic: str  # Il topic scelto dall'LLM
+    matched_topic: str    # Il topic più simile trovato dall'indice vettoriale di Neo4j
 
 class PostFormat(BaseModel):
     category: str = Field(description="La categoria scelta (es. HOW_TO, REVIEW, NEWS, EVENTS)")
