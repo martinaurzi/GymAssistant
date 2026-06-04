@@ -1,0 +1,12 @@
+{
+  "dependencies": [".", "src"],
+  "graphs": {
+    "gym_agent": "./src/graph.py:agent"
+  },
+  "env": [
+    ".env",
+    {
+        "PYTHONPATH": "./src"
+    }
+  ]
+}
