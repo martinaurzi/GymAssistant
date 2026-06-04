@@ -80,15 +80,15 @@ def tool_node(state: AgentState):
 
         if tool_call["name"] == "knowledge_graph_tool":
             observation_str = str(observation)
-            if observation_str.startswith("Contenuto Storico:"):
+            if observation_str.startswith("Contenuto Storico:"): # Non è stato fornito il topic al tool
                 summary_txt = observation_str
             else:
                 try:
-                    # Estraiamo comodamente tutte e tre le informazioni passate dal tool
+                    # E' stato fornito il topic al tool
                     data = json.loads(observation_str)
                     
                     consistency_txt = data["context"]
-                    requested_topic_txt = data["requested_topic"]  # <-- Preso direttamente dal JSON
+                    requested_topic_txt = data["requested_topic"] 
                     matched_topic_txt = data["matched_topic"]
                     
                     # Consegniamo all'LLM solo il testo pulito, nascondendo i metadati del JSON
@@ -297,6 +297,9 @@ def add_post_to_kg_node(state: AgentState):
         print("[NEO4J NODO]: Knowledge Graph aggiornato con successo!")
     except Exception as e:
         print(f"[ERRORE NEO4J NODO]: Impossibile salvare il post: {str(e)}")
+    finally:
+        kg_manager.close()
+        print("[NEO4J NODO]: Chiuso collegamento con il database")
 
     return state
     
