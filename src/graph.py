@@ -194,7 +194,7 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm", "knowledge_gra
         # L'utente ha approvato la bozza generata
         msg.append(HumanMessage(content=f"La bozza del post {post_draft.title} è stata approvata."))
         
-        goto = "knowledge_graph" # INSERIRE NODO KNOWLEDGE GRAPH
+        goto = "knowledge_graph" 
 
         update = {"messages": msg}
 
@@ -217,7 +217,7 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm", "knowledge_gra
 
         msg.append(HumanMessage(content=f"La bozza del post {post_draft.title} è stata modificata manualmente dall'utente e poi approvata."))
 
-        goto = "knowledge_graph" # INSERIRE NODO KNOWLEDGE GRAPH
+        goto = "knowledge_graph" 
 
         update = {
             "messages": msg,
@@ -248,8 +248,23 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm", "knowledge_gra
     
     return Command(goto=goto, update=update)
 
-def knowledge_graph_node(state: AgentState):
-    """"""
+def should_continue(state: AgentState):
+    """Decide se è possibile scrivere la bozza dell'articolo oppure è necessario chiamare altri tool"""
+    last_message = state["messages"][-1]
+
+    if last_message.tool_calls:
+        return "continue"
+    else:
+        return "format_article"
+    
+def add_post_to_kg_node(state: AgentState):
+    """
+    Nodo finale del grafo: prende la bozza formattata dall'LLM, 
+    estrae i claim dal testo e salva tutto su Neo4j.
+    """
+    requested_topic = state.get("requested_topic")
+    matched_topic = state.get("matched_topic", "")
+    
     post = state.get("post_draft")
     print(f"[KNOWLEDGE GRAPH]: procedo ad aggiungere il post:")
     print(f"\nTitolo: {post.title}\n")
@@ -261,26 +276,6 @@ def knowledge_graph_node(state: AgentState):
     print("Fonti:")
     for source in post.sources:
         print(f"- {source}")
-
-    return {}
-
-def should_continue(state: AgentState):
-    """Decide se è possibile scrivere la bozza dell'articolo oppure è necessario chiamare altri tool"""
-    last_message = state["messages"][-1]
-
-    if last_message.tool_calls:
-        return "continue"
-    else:
-        return "format_article"
-    
-def save_to_kg_node(state: AgentState):
-    """
-    Nodo finale del grafo: prende la bozza formattata dall'LLM, 
-    estrae i claim dal testo e salva tutto su Neo4j.
-    """
-    post = state["post_draft"]
-    requested_topic = state.get("requested_topic")
-    matched_topic = state.get("matched_topic", "")
     
     # Fallback sul titolo se l'LLM non ha popolato il requested_topic
     if not requested_topic or requested_topic.strip() == "":
@@ -310,9 +305,8 @@ graph = StateGraph(AgentState)
 graph.add_node("llm", llm_node)
 graph.add_node("tool", tool_node)
 graph.add_node("format", llm_format_node)
-graph.add_node("save_to_kg", save_to_kg_node)
+graph.add_node("knowledge_graph", add_post_to_kg_node)
 graph.add_node("hitl_review", hitl_review_post)
-
 
 graph.add_edge(START, "llm")
 graph.add_conditional_edges(
