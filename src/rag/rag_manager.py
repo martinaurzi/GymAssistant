@@ -41,8 +41,6 @@ class RagManager:
             content.decompose()
 
         text = main_content.get_text(separator=" ", strip=True) # separator per evitare parole incollate, strip=True per eliminare spazi bianchi inutili
-        
-        #print(f"[RAG MANAGER - load_url]: testo del documento: {text}\n")
 
         return Document(
             page_content=text, 
@@ -97,7 +95,7 @@ class RagManager:
         else:
             return False
 
-    def retrieve_documents(self, query: str, k: int = 5) -> list[str]:
+    def retrieve_documents(self, query: str, k: int = 3) -> list[str]:
         """Recupera i documenti più rilevanti alla query eseguendo una Semantic Search nel Vector Database"""
         
         retrieved_docs = self.chroma.similarity_search(query, k=k)

@@ -1,5 +1,4 @@
 from typing import Literal
-
 from dotenv import load_dotenv
 import json
 
@@ -7,10 +6,11 @@ from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.tools import tool
+from langchain_groq import ChatGroq
 
-from schemas import AgentState, HumanInterrupt, PostFormat
-from prompts import SYSTEM_PROMPT, FORMAT_ARTICLE_PROMPT
+from schemas import AgentState, HumanInterrupt, PostFormat, PlannerFormat
+from prompts import SYSTEM_PROMPT, PLANNER_PROMPT, FORMAT_ARTICLE_PROMPT
+from database.neo4j_graph import EditorialKnowledgeGraphManager
 
 from tools.web_search_tool import web_search_tool
 from tools.rag_tool import rag_tool
@@ -24,33 +24,77 @@ tools_by_name = {tool.name: tool for tool in tools}
 
 # Inizializzazione del modello
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+llm_groq = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
 
 # Diamo accesso al modello ai tool
 llm_with_tools = llm.bind_tools(tools)
-    
+
+kgManager = EditorialKnowledgeGraphManager()
+
+def llm_planner_node(state: AgentState):
+    """Recupera lo storico del blog dal knowledge graph sulla base del quale decide la categoria e l'argomento del prossimo post fornendo anche
+       una giustificazione sulla scelta di quel determinato argomento.
+    """
+    # Recuperiamo lo storico del blog
+    blog_history = kgManager.get_kg_summary()
+
+    llm_planner_structured = llm_groq.with_structured_output(PlannerFormat)
+
+    response = llm_planner_structured.invoke([SystemMessage(content=PLANNER_PROMPT.format(blog_history=blog_history))])
+
+    print(f"[PLANNER NODE]: {response}\n")
+
+    return{
+        "planning_information": response
+    }
+
 def llm_node(state: AgentState):
     """Il modello analizza lo stato corrente e decide se chiamare un tool oppure fornire la risposta finale.
 
-        Restituisce lo stato aggiornato con la risposta del modello
-    """
-    # Usiamo .get("kg_summary", "") per prendere il contesto e restituire una stringa vuota nella prima esecuzione
-    blog_history_content = state.get("kg_summary", "")
-    
-    # Formattiamo il SYSTEM_PROMPT in modo sicuro
-    formatted_system_prompt = SYSTEM_PROMPT.format(blog_history=blog_history_content)
-    
+       Restituisce lo stato aggiornato con la risposta del modello e aggiorna la reasoning trace con i suoi pensieri.
+    """ 
+    planning_info = state.get("planning_information")
+
+    planning_info_str = f"Categoria: {planning_info.category} | Argomento (Topic): {planning_info.topic}"
+
+    print(f"[LLM]: Fare il post su {planning_info_str}\n")
+
     # Invocazione del modello
-    response = llm_with_tools.invoke(
-        [SystemMessage(content=formatted_system_prompt)] + state["messages"]
-    )
+    response = llm_with_tools.invoke([SystemMessage(content=SYSTEM_PROMPT.format(planning_info=planning_info_str))] + state["messages"])
 
-    # Per tenere traccia del ragionamento
-    current_thought = [response.text] if response.text else []
-
-    return {
-        "messages": [response],
-        "reasoning_trace": current_thought
+    updated_state = {
+        "messages": [response]
     }
+
+    tool_justification = ""
+    current_thought = ""
+
+    if response.tool_calls:
+        if isinstance(response.content, list):
+            reasoning_text = []
+
+            for block in response.content:
+                if isinstance(block, dict) and "text" in block:
+                    reasoning_text.append(block["text"])
+                elif isinstance(block, str): # continuo dopo "extras"
+                    reasoning_text.append(block)
+            
+            # Uniamo tutti i pezzi in un'unica stringa
+            current_thought = "".join(reasoning_text)
+        else:
+            current_thought = str(response.content)
+
+        current_thought = current_thought.strip()
+
+        tool_name = response.tool_calls[0]["name"]
+        tool_justification = f"Ho usato il tool {tool_name} per il seguente motivo: {current_thought}"
+
+        print(f"[LLM]: giustificazione uso dei tool: {tool_justification}\n")
+
+        updated_state["reasoning_trace"] = [current_thought]
+        updated_state["tool_usage_justification"] = tool_justification
+        
+    return updated_state
 
 def tool_node(state: AgentState):
     """Esegue tutte le chiamate ai tool relative alla precedente risposta dell'LLM.
@@ -63,11 +107,10 @@ def tool_node(state: AgentState):
 
     tool_outputs = []
     rag_retrieved_docs = []
+    web_search_res = []
     
-    summary_txt = state.get("kg_summary", "")
     consistency_txt = state.get("kg_consistency_context", "")
-    
-    requested_topic_txt = state.get("requested_topic", "")
+    #requested_topic_txt = state.get("requested_topic", "")
     matched_topic_txt = state.get("matched_topic", "")
 
     # Eseguiamo tutte le chiamate ai tool
@@ -78,33 +121,32 @@ def tool_node(state: AgentState):
 
         observation = tool.invoke(tool_call["args"]) 
 
+        observation_str = str(observation)
+
         if tool_call["name"] == "knowledge_graph_tool":
-            observation_str = str(observation)
-            if observation_str.startswith("Contenuto Storico:"): # Non è stato fornito il topic al tool
-                summary_txt = observation_str
-            else:
-                try:
-                    # E' stato fornito il topic al tool
-                    data = json.loads(observation_str)
-                    
-                    consistency_txt = data["context"]
-                    requested_topic_txt = data["requested_topic"] 
-                    matched_topic_txt = data["matched_topic"]
-                    
-                    # Consegniamo all'LLM solo il testo pulito, nascondendo i metadati del JSON
-                    observation_str = data["context"]
-                except Exception as e:
-                    print(f"[ERRORE PARSING JSON TOOL]: {e}")
-                    consistency_txt = observation_str
+            try:
+                data = json.loads(observation_str)
+                
+                consistency_txt = data["context"]
+                #requested_topic_txt = data["requested_topic"] 
+                matched_topic_txt = data["matched_topic"]
+                
+                observation_str = data.get("context", "")
+            except Exception as e:
+                print(f"[ERRORE PARSING JSON TOOL]: {e}")
+                consistency_txt = observation_str
 
         # Verifichiamo se è stato chiamato il tool RAG
-        if tool_call["name"] == "rag_tool" and observation: # observation non deve essere ""
-            rag_retrieved_docs = str(observation).split("|")
+        if tool_call["name"] == "rag_tool" and observation_str: # observation non deve essere ""
+            rag_retrieved_docs = observation_str.split("|")
+
+        #if tool_call["name"] == "web_search_tool" and observation_str:
+         #   web_search_res = observation_str.split("|")
 
         # Messaggio di risposta del tool
         tool_outputs.append(
             ToolMessage(
-                content=str(observation),
+                content=observation_str,
                 name=tool_call["name"],
                 tool_call_id=tool_call["id"]
             ) 
@@ -114,9 +156,9 @@ def tool_node(state: AgentState):
         "messages": tool_outputs, 
         "tool_outputs": tool_outputs,
         "retrived_documents": rag_retrieved_docs,
-        "kg_summary": summary_txt,
+        #"web_search_results": web_search_res,
         "kg_consistency_context": consistency_txt,
-        "requested_topic": requested_topic_txt,  
+        #"requested_topic": requested_topic_txt,  
         "matched_topic": matched_topic_txt
     }
 
@@ -125,18 +167,20 @@ def llm_format_node(state: AgentState):
 
     print("[WRITER] Formatto l'articolo...")
     
-    # Recuperiamo il contesto di coerenza salvato dallo state
+    # Recuperiamo il contesto di coerenza salvato nello state
     consistency_data = state.get("kg_consistency_context", "")
+
     if not consistency_data or consistency_data.strip() == "":
         # !! VEDERE SE CONVIENE FORNIRE STRINGA VUOTA
         consistency_data = "Nessun vincolo precedente trovato per questo argomento. Procedi liberamente."
 
-    # Iniettiamo dinamicamente il contesto nel prompt finale
-    formatted_prompt = FORMAT_ARTICLE_PROMPT.format(consistency_context=consistency_data)
+    #rag_docs = state.get("retrived_documents")
+    #web_search_res = state.get("web_search_results")
 
-    structured_output_llm = llm.with_structured_output(PostFormat)
+    #llm_writer_structured = llm_groq.with_structured_output(PostFormat)
+    llm_writer_structured = llm.with_structured_output(PostFormat)
 
-    results = structured_output_llm.invoke([SystemMessage(content=formatted_prompt)] + state["messages"])
+    results = llm_writer_structured.invoke([SystemMessage(content=FORMAT_ARTICLE_PROMPT.format(consistency_context=consistency_data))] + state["messages"])
 
     return {"post_draft": results}
 
@@ -164,10 +208,14 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm", "knowledge_gra
     # Creiamo dei messaggi
     msg = [HumanMessage(content=f"Revisione della bozza del post con titolo {post_draft.title}.")]
 
+    reasoning_trace = state.get("reasoning_trace")
+    topic_selection_justification = reasoning_trace[-1] if reasoning_trace else "Nessuna giustificazione per la selezione del topic."
+
     # Creiamo interrupt che viene mostrato all'utente
     request: HumanInterrupt  = {
         "action_request": {
             "action": "Revisione della bozza dell'articolo",
+            "topic_selection_justification": topic_selection_justification,
             "args": {
                 "title": post_draft.title,
                 "introduction": post_draft.introduction,
@@ -297,21 +345,23 @@ def add_post_to_kg_node(state: AgentState):
         print("[NEO4J NODO]: Knowledge Graph aggiornato con successo!")
     except Exception as e:
         print(f"[ERRORE NEO4J NODO]: Impossibile salvare il post: {str(e)}")
-    finally:
-        kg_manager.close()
-        print("[NEO4J NODO]: Chiuso collegamento con il database")
+    #finally:
+    #    kg_manager.close()
+    #    print("[NEO4J NODO]: Chiuso collegamento con il database")
 
-    return state
+    return {}
     
 graph = StateGraph(AgentState)
 
+graph.add_node("planner", llm_planner_node)
 graph.add_node("llm", llm_node)
 graph.add_node("tool", tool_node)
 graph.add_node("format", llm_format_node)
 graph.add_node("knowledge_graph", add_post_to_kg_node)
 graph.add_node("hitl_review", hitl_review_post)
 
-graph.add_edge(START, "llm")
+graph.add_edge(START, "planner")
+graph.add_edge("planner", "llm")
 graph.add_conditional_edges(
     "llm",
     should_continue,

@@ -8,16 +8,4 @@ initial_input = {
 
 result = agent.invoke(initial_input)
 
-#post = result["post_draft"]
-
-#print(f"\n--- POST {post.category} ---\n")
-#print(f"Titolo: {post.title}\n")
-#print(f"{post.introduction}\n")
-#print(f"{post.body}\n")
-#print(f"{post.conclusion}\n")
-
-#print("Fonti:")
-#for source in post.sources:
-#   print(f"- {source}")
-
 print(f"CRONOLOGIA DEI MESSAGGI: {result["messages"]}\n")

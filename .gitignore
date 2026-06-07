@@ -1,5 +1,11 @@
 chroma_db/
 
+.langgraph_api/
+.langgraph_dist/
+
+*.pckl
+*.pickle
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
