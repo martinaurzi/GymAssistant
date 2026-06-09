@@ -1,8 +1,8 @@
-from typing import Literal
+from typing import Literal, Union
 from dotenv import load_dotenv
 import json
 
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, RemoveMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -48,22 +48,43 @@ def llm_planner_node(state: AgentState):
         "planning_information": response
     }
 
-def llm_node(state: AgentState):
+def llm_node(state: AgentState) -> Union[Command[Literal["__end__"]], dict]:
     """Il modello analizza lo stato corrente e decide se chiamare un tool oppure fornire la risposta finale.
 
        Restituisce lo stato aggiornato con la risposta del modello e aggiorna la reasoning trace con i suoi pensieri.
     """ 
     planning_info = state.get("planning_information")
 
-    planning_info_str = f"Categoria: {planning_info.category} | Argomento (Topic): {planning_info.topic}"
+    if not planning_info or not planning_info.planned_post_sequence:
+        print(f"[LLM]: Nessun post da generare: {planning_info}\n")
+        return Command(goto=END)
+    
+    current_post = planning_info.planned_post_sequence[0]
 
-    print(f"[LLM]: Fare il post su {planning_info_str}\n")
+    current_post_str = f"Categoria: {current_post.category} | Argomento (Topic): {current_post.topic}"
 
+    print(f"[LLM]: Fare il post su {current_post_str}\n")
+
+    input_messages = state.get("messages", [])
+    new_messages = []
+
+    if not input_messages:
+        # Generiamo un messaggio da inviare a LLM dato che abbiamo cancellato la cronologia dei messaggi
+        input_msg = HumanMessage(content="Procedi con la generazione del prossimo post.")
+
+        input_messages = [input_msg]
+
+        new_messages.append(input_msg)
+                          
     # Invocazione del modello
-    response = llm_with_tools.invoke([SystemMessage(content=SYSTEM_PROMPT.format(planning_info=planning_info_str))] + state["messages"])
+    response = llm_with_tools.invoke([SystemMessage(content=SYSTEM_PROMPT.format(planning_info=current_post_str))] + input_messages)
+
+    new_messages.append(response)
+
+    print(f"[LLM]: new_messages: {new_messages}")
 
     updated_state = {
-        "messages": [response]
+        "messages": new_messages
     }
 
     tool_justification = ""
@@ -93,7 +114,7 @@ def llm_node(state: AgentState):
 
         updated_state["reasoning_trace"] = [current_thought]
         updated_state["tool_usage_justification"] = tool_justification
-        
+    
     return updated_state
 
 def tool_node(state: AgentState):
@@ -107,10 +128,9 @@ def tool_node(state: AgentState):
 
     tool_outputs = []
     rag_retrieved_docs = []
-    web_search_res = []
+    #web_search_res = []
     
     consistency_txt = state.get("kg_consistency_context", "")
-    #requested_topic_txt = state.get("requested_topic", "")
     matched_topic_txt = state.get("matched_topic", "")
 
     # Eseguiamo tutte le chiamate ai tool
@@ -128,7 +148,6 @@ def tool_node(state: AgentState):
                 data = json.loads(observation_str)
                 
                 consistency_txt = data["context"]
-                #requested_topic_txt = data["requested_topic"] 
                 matched_topic_txt = data["matched_topic"]
                 
                 observation_str = data.get("context", "")
@@ -157,8 +176,7 @@ def tool_node(state: AgentState):
         "tool_outputs": tool_outputs,
         "retrived_documents": rag_retrieved_docs,
         #"web_search_results": web_search_res,
-        "kg_consistency_context": consistency_txt,
-        #"requested_topic": requested_topic_txt,  
+        "kg_consistency_context": consistency_txt, 
         "matched_topic": matched_topic_txt
     }
 
@@ -176,8 +194,8 @@ def llm_format_node(state: AgentState):
 
     #rag_docs = state.get("retrived_documents")
     #web_search_res = state.get("web_search_results")
-
     #llm_writer_structured = llm_groq.with_structured_output(PostFormat)
+
     llm_writer_structured = llm.with_structured_output(PostFormat)
 
     results = llm_writer_structured.invoke([SystemMessage(content=FORMAT_ARTICLE_PROMPT.format(consistency_context=consistency_data))] + state["messages"])
@@ -305,15 +323,18 @@ def should_continue(state: AgentState):
     else:
         return "format_article"
     
-def add_post_to_kg_node(state: AgentState):
-    """
-    Nodo finale del grafo: prende la bozza formattata dall'LLM, 
-    estrae i claim dal testo e salva tutto su Neo4j.
-    """
-    requested_topic = state.get("requested_topic")
+def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]:
+    """Nodo finale del grafo: prende la bozza formattata dall'LLM, estrae i claim dal testo e salva tutto su Neo4j."""
+    
+    planning_info = state.get("planning_information")
+    post = state.get("post_draft")
     matched_topic = state.get("matched_topic", "")
     
-    post = state.get("post_draft")
+    requested_topic = post.title
+
+    if planning_info and planning_info.planned_post_sequence:
+        requested_topic = planning_info.planned_post_sequence[0].topic
+
     print(f"[KNOWLEDGE GRAPH]: procedo ad aggiungere il post:")
     print(f"\nTitolo: {post.title}\n")
     print(f"Categoria: {post.category}\n")
@@ -324,16 +345,12 @@ def add_post_to_kg_node(state: AgentState):
     print("Fonti:")
     for source in post.sources:
         print(f"- {source}")
-    
-    # Fallback sul titolo se l'LLM non ha popolato il requested_topic
-    if not requested_topic or requested_topic.strip() == "":
-        requested_topic = post.title
 
     # Estrazione automatica dei Claim dalle righe del body
     lines = [line.strip() for line in post.body.split("\n") if line.strip()]
     claims_database = lines[:4] if lines else [f"Linee guida e indicazioni tecniche per {post.title}"]
 
-    print("\n[NEO4J NODO]: Salvataggio dell'articolo e aggiornamento delle relazioni in corso...")
+    print("\n[KNOWLEDGE GRAPH]: Salvataggio dell'articolo e aggiornamento delle relazioni in corso...")
     
     try:
         kg_manager.add_approved_post(
@@ -342,14 +359,33 @@ def add_post_to_kg_node(state: AgentState):
             matched_topic=matched_topic, 
             claims=claims_database
         )
-        print("[NEO4J NODO]: Knowledge Graph aggiornato con successo!")
+        print(f"[KNOWLEDGE GRAPH]: Il post con titolo {post.title} è stato aggiunto nel Knowledge graph")
     except Exception as e:
-        print(f"[ERRORE NEO4J NODO]: Impossibile salvare il post: {str(e)}")
-    #finally:
-    #    kg_manager.close()
-    #    print("[NEO4J NODO]: Chiuso collegamento con il database")
+        print(f"[KNOWLEDGE GRAPH]: Impossibile aggiungere il post al Knowledge graph: {str(e)}")
 
-    return {}
+    # Escludiamo il post che abbiamo appena aggiunto che si trova in posizione 0 della lista planned_post_sequence
+    remaining_planned_posts = planning_info.planned_post_sequence[1:] if planning_info.planned_post_sequence else []
+
+    if remaining_planned_posts:
+        print(f"[KNOWLEDGE GRAPH]: rimangono ancora {len(remaining_planned_posts)} da pubblicare\n")
+        
+        updated_planning_info = planning_info.model_copy(update={"planned_post_sequence": remaining_planned_posts})
+
+        delete_messages = [RemoveMessage(id=msg.id) for msg in state["messages"] if hasattr(msg, "id")]
+
+        return Command(
+            goto="llm",
+            update={
+                "messages": delete_messages, # Eliminiamo tutti i messaggi riguardanti il post appena pubblicato
+                "planning_information": updated_planning_info
+            }
+        )
+    else:
+        print(f"[KNOWLEDGE GRAPH]: Non ci sono più post da pubblicare\n")
+
+        return Command(
+            goto=END
+        )
     
 graph = StateGraph(AgentState)
 
@@ -372,6 +408,5 @@ graph.add_conditional_edges(
 )
 graph.add_edge("tool", "llm")
 graph.add_edge("format", "hitl_review")
-graph.add_edge("knowledge_graph", END)
 
 agent = graph.compile()

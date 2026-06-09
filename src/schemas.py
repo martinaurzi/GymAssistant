@@ -21,9 +21,12 @@ class AgentState(TypedDict):
     planning_information: Annotated[PlannerFormat, lambda old_plan, new_plan: new_plan]
     tool_usage_justification: str
 
-class PlannerFormat(BaseModel):
+class PlannedPost(BaseModel):
     category: str = Field(description="La categoria scelta (es. HOW TO, REVIEW, NEWS, EVENTS)")
     topic: str = Field(description="L'argomento del post")
+
+class PlannerFormat(BaseModel):
+    planned_post_sequence: list[PlannedPost] = Field(description="La sequenza dei prossimi post da pubblicare.")
     topic_justification: str = Field(description="Il motivo per cui è stato scelto questo argomento")
 
 class PostFormat(BaseModel):

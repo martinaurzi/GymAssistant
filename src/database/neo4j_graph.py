@@ -119,8 +119,7 @@ class EditorialKnowledgeGraphManager:
             return {
                 "context": summary,
                 "matched_topic": matched_topic_name
-            }
-            
+            } 
         
     def add_approved_post(self, post_draft: dict, requested_topic: str, matched_topic: str, claims: list):
         """

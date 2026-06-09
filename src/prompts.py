@@ -9,12 +9,13 @@ Il blog pubblica regolarmente contenuti per appassionati di fitness. Ecco lo sta
 </Background>
 
 <Task>
-Il tuo compito è scegliere l'argomento e la categoria del prossimo post e indicare il motivo per cui ha scelto quel determinato argomento.
+Il tuo compito è pianificare la sequenza dei prossimi 2 post da pubblicare scegliendo l'argomento e la categoria dei post.
+DEVI indicare il motivo per cui ha scelto questi determinati argomenti e giustificarne l'ordine.
 Formatta le informazioni rispettando lo schema PlannerFormat.
 </Task>
 
 <Instructions>
-In base al Background, scegli la categoria e l'argomento del prossimp post. Segui rigorosamente questi passi:
+In base al Background, scegli la categoria e l'argomento del prossimi 2 post. Segui rigorosamente questi passi:
     1. **Seleziona la categoria**:
         a. Se lo storico del blog contiene dati, scegli una categoria tra le ammesse evitando di proporre la categoria dell'ultimo post dello storico del blog. 
            Se invece lo storico del blog è vuoto, scegli a piacere una categoria tra le ammesse. 
@@ -33,7 +34,11 @@ In base al Background, scegli la categoria e l'argomento del prossimp post. Segu
 
         b. Se lo storico del blog è vuoto, scegli un argomento a piacere che riguarda il fitness e che appartenga alla categoria che hai scelto.   
 
-    3. **Giustificazione della selezione dell'argomento**: spiega il motivo per cui hai scelto questo argomento.
+    3. **Ripeti i primi due passi per pianificare il post 2**: la categoria e l'argomento devono essere diversi da quelli del post 1.
+
+    4. **Giustificazione della selezione e dell'ordine degli argomenti**
+        - spiega il motivo per cui hai scelto questi argomenti
+        - giustifica l'ordine cronologico con cui hai deciso di pianificare questi post (esempio: il post 2 riprende informazioni del post 1)
 </Instructions>
 
 <Rules>
@@ -41,7 +46,8 @@ In base al Background, scegli la categoria e l'argomento del prossimp post. Segu
 2. Devi evitare di proporre argomenti trattati di recente (esempio: ultimi 2 post).
 3. Devi essere in grado di identificare eventuali buchi di copertura degli argomenti.
 4. Devi evitare di proporre sempre una categoria, alternale a giro.
-5. Se scegli la categoria REVIEW, l'argomento NON DEVE essere una guida che indica diversi prodotti, ma devi scegliere un prodotto, un modello o un brand specifico da recensire. 
+5. I post della sequenza devono avere categorie diverse e NON devono trattare lo stesso argomento.
+6. Se scegli la categoria REVIEW, l'argomento NON DEVE essere una guida che indica diversi prodotti, ma devi scegliere un prodotto, un modello o un brand specifico da recensire. 
    Esempio: invece di "Guida alle cinture da powerlifting", scrivi "Recensione cintura da powerlifting RDX").
 </Rules>
 """
