@@ -20,6 +20,7 @@ class AgentState(TypedDict):
     matched_topic: str    # Il topic più simile trovato dall'indice vettoriale di Neo4j
     planning_information: Annotated[PlannerFormat, lambda old_plan, new_plan: new_plan]
     tool_usage_justification: str
+    posts_published_count: int
 
 class PlannedPost(BaseModel):
     category: str = Field(description="La categoria scelta (es. HOW TO, REVIEW, NEWS, EVENTS)")
@@ -40,14 +41,17 @@ class PostFormat(BaseModel):
 class EvaluatedSource(BaseModel):
     url: str = Field(description="URL della fonte valutata")
     title: str = Field(description="Titolo della risorsa")
-    accuracy_score: int = Field(description="Punteggio di accuratezza percetuale da 0 a 100")
-    interestingness_score: int = Field(description="Punteggio di interesse/originalità per i lettori da 1 a 10")
-    justification: str = Field(description="Breve motivazione del punteggio assegnato e verifica dei fatti")
-    is_selected: bool = Field(description="True se la fonte supera i criteri di qualità ed è consigliata per il post, False altrimenti")
+    relevance_score: int = Field(description="Punteggio di pertinenza (0-10) basato anche sullo score di Tavily")
+    accuracy_score: int = Field(description="Punteggio di accuratezza (0-10) basato su attendibilità e fatti verificabili")
+    quality_score: int = Field(description="Punteggio di qualità (0-10) basato su autorevolezza e profondità")
+    interestingness_score: int = Field(description="Punteggio di interesse/originalità (0-10) per i lettori del blog")
+    justification: str = Field(description="Breve motivazione dettagliata per ciascun punteggio assegnato")
+    is_selected: bool = Field(description="True se (relevance >= 7 E accuracy >= 7 E quality >= 7), altrimenti False")
+    final_score: float = Field(description="Calcolato rigorosamente come: (0.35 * relevance) + (0.35 * accuracy) + (0.20 * quality) + (0.10 * interestingness)")
 
 class JudgeEvaluation(BaseModel):
-    evaluated_sources: List[EvaluatedSource] = Field(description="Lista delle fonti analizzate con i relativi giudizi")
-    verdict_summary: str = Field(description="Sintesi complessiva della qualità del materiale raccolto")
+    evaluated_sources: List[EvaluatedSource] = Field(description="Lista delle fonti analizzate")
+    verdict_summary: str = Field(description="Sintesi complessiva della qualità del materiale raccolto e motivazione sulla scelta della fonte migliore")
 
 class HumanInterruptConfig(TypedDict):
     allow_ignore: bool

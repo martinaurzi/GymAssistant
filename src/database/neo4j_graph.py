@@ -121,7 +121,7 @@ class EditorialKnowledgeGraphManager:
                 "matched_topic": matched_topic_name
             } 
         
-    def add_approved_post(self, post_draft: dict, requested_topic: str, matched_topic: str, claims: list):
+    def add_approved_post(self, post_draft: dict, requested_topic: str, matched_topic: str, claims: list, publish_date: str):
         """
         Crea il post e lo associa tramite :COVERS sia al topic richiesto sia al topic affine trovato.
         """
@@ -136,6 +136,7 @@ class EditorialKnowledgeGraphManager:
             introduction: $introduction, 
             body: $body, 
             conclusion: $conclusion,
+            publishDate: $publish_date,
             createdAt: timestamp()
         })
 
@@ -181,6 +182,7 @@ class EditorialKnowledgeGraphManager:
                 topic_embedding=topic_vector,
                 matched_topic=matched_topic,
                 sources=post_draft['sources'],
+                publish_date=publish_date,
                 claims=claims
             )
             print("[NEO4J]: Grafo aggiornato con successo!\n")

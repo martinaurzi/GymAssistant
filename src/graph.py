@@ -15,11 +15,12 @@ from database.neo4j_graph import EditorialKnowledgeGraphManager
 from tools.web_search_tool import web_search_tool
 from tools.rag_tool import rag_tool
 from tools.knowledge_graph_tool import knowledge_graph_tool, kg_manager
+from tools.research_judge_tool import research_judge_tool
 
 load_dotenv(".env")
 
 # Lista di tool
-tools = [web_search_tool, rag_tool, knowledge_graph_tool] 
+tools = [web_search_tool, rag_tool, knowledge_graph_tool, research_judge_tool] 
 tools_by_name = {tool.name: tool for tool in tools}
 
 # Inizializzazione del modello
@@ -329,6 +330,10 @@ def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]
     planning_info = state.get("planning_information")
     post = state.get("post_draft")
     matched_topic = state.get("matched_topic", "")
+    count = state.get("posts_published_count", 0) # 0 deafult
+    
+    # Calcolo data di pubblicazione con delay di 2 giorni per post
+    publish_date = datetime.now() + timedelta(days=count * 2)
     
     requested_topic = post.title
 
@@ -357,7 +362,8 @@ def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]
             post_draft=post.model_dump(), # Converte l'oggetto Pydantic in dizionario standard
             requested_topic=requested_topic, 
             matched_topic=matched_topic, 
-            claims=claims_database
+            claims=claims_database,
+            publish_date=publish_date.isoformat()
         )
         print(f"[KNOWLEDGE GRAPH]: Il post con titolo {post.title} è stato aggiunto nel Knowledge graph")
     except Exception as e:
@@ -377,7 +383,8 @@ def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]
             goto="llm",
             update={
                 "messages": delete_messages, # Eliminiamo tutti i messaggi riguardanti il post appena pubblicato
-                "planning_information": updated_planning_info
+                "posts_published_count": count + 1, # incrementiamo il numero di post pubblicati
+                "planning_information": updated_planning_info               
             }
         )
     else:
