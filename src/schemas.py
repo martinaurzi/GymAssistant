@@ -1,4 +1,4 @@
-from typing import Annotated, Literal, Optional, TypedDict, Union
+from typing import Annotated, Literal, Optional, TypedDict, Union, List
 from langchain_core.messages import BaseMessage, ToolMessage
 from langgraph.graph import add_messages
 from pydantic import BaseModel, Field
@@ -36,6 +36,18 @@ class PostFormat(BaseModel):
     body: str = Field(description="Il corpo dell'articolo organizzato in paragrafi e punti elenco")
     conclusion: str = Field(description="La conclusione del post")
     sources: list[str] = Field(description="Fonti da cui sono state recuperate le informazioni del post")
+
+class EvaluatedSource(BaseModel):
+    url: str = Field(description="URL della fonte valutata")
+    title: str = Field(description="Titolo della risorsa")
+    accuracy_score: int = Field(description="Punteggio di accuratezza percetuale da 0 a 100")
+    interestingness_score: int = Field(description="Punteggio di interesse/originalità per i lettori da 1 a 10")
+    justification: str = Field(description="Breve motivazione del punteggio assegnato e verifica dei fatti")
+    is_selected: bool = Field(description="True se la fonte supera i criteri di qualità ed è consigliata per il post, False altrimenti")
+
+class JudgeEvaluation(BaseModel):
+    evaluated_sources: List[EvaluatedSource] = Field(description="Lista delle fonti analizzate con i relativi giudizi")
+    verdict_summary: str = Field(description="Sintesi complessiva della qualità del materiale raccolto")
 
 class HumanInterruptConfig(TypedDict):
     allow_ignore: bool
