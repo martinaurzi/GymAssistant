@@ -1,12 +1,22 @@
 from langchain_core.tools import tool
 
+from typing import Annotated
+
 from rag.rag_manager import RagManager
 
 rag_manager = RagManager()
 
 @tool
-def rag_tool(query: str) -> str:
-    """Recupera i documenti più rilevanti rispetto alla query"""
+def rag_tool(
+    query: str,
+    justification: Annotated[str, "Spiegazione obbligatoria del perché stai usando questo tool proprio adesso."]
+) -> str:
+    """Recupera i documenti più rilevanti rispetto alla query.
+
+    Argomenti:
+        query: La stringa di ricerca da usare per il recupero dei documenti.
+        justification: La giustificazione obbligatoria per l'utilizzo del tool.
+    """
 
     retrieved_docs = rag_manager.retrieve_documents(query=query)
 

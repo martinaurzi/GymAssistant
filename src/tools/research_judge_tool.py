@@ -1,4 +1,4 @@
-import os
+from typing import Annotated
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -11,13 +11,18 @@ load_dotenv(".env")
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 @tool
-def research_judge_tool(search_results_str: str, topic: str) -> str:
+def research_judge_tool(
+    search_results_str: str,
+    topic: str,
+    justification: Annotated[str, "Spiegazione obbligatoria del perché stai usando questo tool proprio adesso."]
+) -> str:
     """Valuta le fonti web separate da '|' calcolando un punteggio finale ponderato 
     e selezionando solo quelle che superano i requisiti minimi di qualità (punteggi >= 7).
     
     Argomenti:
         search_results_str: La stringa contenente i risultati formattati separati da '|'
         topic: Il topic dell'articolo corrente
+        justification: La giustificazione obbligatoria per l'utilizzo del tool.
     """
     
     # Splittiamo la stringa generata dal tuo web_search_tool per renderla leggibile al modello

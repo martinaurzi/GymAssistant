@@ -30,6 +30,9 @@ tools_by_name = {tool.name: tool for tool in tools}
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 llm_groq = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
 
+from pydantic import create_model, Field
+from langchain_core.tools import Tool
+
 # Diamo accesso al modello ai tool
 llm_with_tools = llm.bind_tools(tools)
 
@@ -95,21 +98,33 @@ def llm_node(state: AgentState) -> Union[Command[Literal["__end__"]], dict]:
     current_thought = ""
 
     if response.tool_calls:
-        if isinstance(response.content, list):
-            reasoning_text = []
+        print(f"[RISPOSTA CHATGPT]: {response}\n")
+        # Reasoning trace con modello gemini-2.5-flash
+        #if isinstance(response.content, list):
+             #reasoning_text = []
 
-            for block in response.content:
-                if isinstance(block, dict) and "text" in block:
-                    reasoning_text.append(block["text"])
-                elif isinstance(block, str): # continuo dopo "extras"
-                    reasoning_text.append(block)
+            #for block in response.content:
+                #if isinstance(block, dict) and "text" in block:
+                    #reasoning_text.append(block["text"])
+                #elif isinstance(block, str): # continuo dopo "extras"
+                    #reasoning_text.append(block)
             
             # Uniamo tutti i pezzi in un'unica stringa
-            current_thought = "".join(reasoning_text)
+            #current_thought = "".join(reasoning_text)
+        #else:
+           # current_thought = str(response.content)
+        
+        # Reasoning trace con modello gpt-4o-mini
+        tool_thought = response.tool_calls[0]["args"].get("justification", "Nessuna giustificazione rilevata.")
+        current_thought = tool_thought
+        
+        # Gestione di sicurezza per lo strip
+        if isinstance(tool_thought, str):
+            current_thought = tool_thought.strip()
         else:
-            current_thought = str(response.content)
+            current_thought = str(tool_thought)
 
-        current_thought = current_thought.strip()
+        #current_thought = current_thought.strip()
 
         tool_name = response.tool_calls[0]["name"]
         tool_justification = f"Ho usato il tool {tool_name} per il seguente motivo: {current_thought}"

@@ -9,11 +9,16 @@ load_dotenv(".env")
 tavily_client = TavilyClient()
 
 @tool
-def web_search_tool(query: str, max_results: Annotated[int, InjectedToolArg] = 3,) -> str:
+def web_search_tool(
+    query: str, 
+    justification: Annotated[str, "Spiegazione obbligatoria del perché stai usando questo tool proprio adesso."],
+    max_results: Annotated[int, InjectedToolArg] = 3,
+)-> str:
     """Cerca informazioni su internet usando la Tavily search API.
 
     Argomenti:
         query: Una singola query di ricerca da eseguire
+        justification: La giustificazione obbligatoria per l'utilizzo del tool.
         max_results: Massimo numero di risultati da restituire
         
     Restituisce:
