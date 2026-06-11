@@ -1,11 +1,13 @@
 from typing import Literal, Union
 from dotenv import load_dotenv
 import json
+from datetime import datetime, timedelta
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, RemoveMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
-from langchain_google_genai import ChatGoogleGenerativeAI
+#from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
 
 from schemas import AgentState, HumanInterrupt, PostFormat, PlannerFormat
@@ -24,7 +26,8 @@ tools = [web_search_tool, rag_tool, knowledge_graph_tool, research_judge_tool]
 tools_by_name = {tool.name: tool for tool in tools}
 
 # Inizializzazione del modello
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+#llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 llm_groq = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
 
 # Diamo accesso al modello ai tool
@@ -363,7 +366,7 @@ def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]
             requested_topic=requested_topic, 
             matched_topic=matched_topic, 
             claims=claims_database,
-            publish_date=publish_date.isoformat()
+            publish_date=publish_date.date().isoformat()
         )
         print(f"[KNOWLEDGE GRAPH]: Il post con titolo {post.title} è stato aggiunto nel Knowledge graph")
     except Exception as e:

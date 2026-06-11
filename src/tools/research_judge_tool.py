@@ -1,9 +1,14 @@
 import os
+from dotenv import load_dotenv
 from langchain_core.tools import tool
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_groq import ChatGroq
+#from langchain_groq import ChatGroq
 from schemas import JudgeEvaluation
 from prompts import JUDGE_PROMPT
+
+load_dotenv(".env")
+
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 @tool
 def research_judge_tool(search_results_str: str, topic: str) -> str:
@@ -16,23 +21,20 @@ def research_judge_tool(search_results_str: str, topic: str) -> str:
     """
     
     # Splittiamo la stringa generata dal tuo web_search_tool per renderla leggibile al modello
-    fonti = search_results_str.split("|")
+    sources = search_results_str.split("|")
     formatted_sources_text = []
     
-    for idx, fonte in enumerate(fonti, 1):
-        if not fonte.strip():
+    for idx, source in enumerate(sources, 1):
+        if not source.strip(): # se la fonte è stringa vuota
             continue
         
-        formatted_sources_text.append(f"RISULTATO DA VALUTARE {idx} \n{fonte.strip()}\n")
+        formatted_sources_text.append(f"RISULTATO DA VALUTARE {idx} \n{source.strip()}\n")
             
-    text_to_analyze = "\n".join(formatted_sources_text) if formatted_sources_text else search_results_str
+    text_to_analyze = "\n".join(formatted_sources_text) 
 
     # Configurazione di Groq (usiamo llama-3.3-70b)
-    judge_llm = ChatGroq(
-        model="llama-3.3-70b-versatile", 
-        temperature=0,
-        groq_api_key=os.getenv("GROQ_API_KEY")
-    )
+    #judge_llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0,groq_api_key=os.getenv("GROQ_API_KEY"))
+    judge_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
     
     # Forziamo l'output strutturato Pydantic
     structured_judge = judge_llm.with_structured_output(JudgeEvaluation)
@@ -56,7 +58,7 @@ def research_judge_tool(search_results_str: str, topic: str) -> str:
         
         # Costruiamo il report testuale finale che verrà restituito all'agente principale
         output_lines = [
-            f"**RESOCONTO** (Elaborato con Llama-3 su Groq)\n",
+            f"**RESOCONTO**\n",
             f" Sintesi: {evaluation.verdict_summary}\n",
             "**FONTI SELEZIONATE (Ordinate per Interesse):**"
         ]
@@ -69,7 +71,7 @@ def research_judge_tool(search_results_str: str, topic: str) -> str:
                     f"\n  **{src.title}**"
                     f"\n   - URL: {src.url}"
                     f"\n   - Punteggi: [Relevance: {src.relevance_score} | Accuracy: {src.accuracy_score} | Quality: {src.quality_score} | Interest: {src.interestingness_score}]"
-                    f"\n   - **FINAL SCORE PONDERATO:** {round(src.final_score, 2)}" #round serve per arrontondare a 2 cifre decimali dopo la virgola
+                    f"\n   - **SCORE PONDERATO:** {round(src.final_score, 2)}" #round serve per arrontondare a 2 cifre decimali dopo la virgola
                     f"\n   - Motivazione: {src.justification}"
                 )
                 

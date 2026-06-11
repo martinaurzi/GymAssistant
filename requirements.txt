@@ -12,3 +12,4 @@ langgraph-api
 neo4j 
 langchain_google_genai
 langchain-groq
+langchain-openai

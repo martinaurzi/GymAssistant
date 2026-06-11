@@ -29,8 +29,9 @@ def web_search_tool(query: str, max_results: Annotated[int, InjectedToolArg] = 3
         for res in tavily_results["results"]:
             source = res.get("url")
             title = res.get("title")
+            score = res.get("score")
             content = res.get("raw_content") or res.get("content")
 
-            cleaned_res.append(f"Fonte: {source}, Titolo: {title}, Contenuto: {content.strip()}")
+            cleaned_res.append(f"Fonte: {source}, Titolo: {title}, Score: {score}, Contenuto: {content.strip()}")
 
     return ("|").join(cleaned_res)
