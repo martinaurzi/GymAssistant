@@ -20,7 +20,6 @@ def knowledge_graph_tool(
         justification: La giustificazione obbligatoria per l'utilizzo del tool.
     """
     try:
-        # Controllo di coerenza semantica
         kg_res = kg_manager.search_similar_content(topic)
         print(f"[KG TOOL] {kg_res['context']}\n")
         
@@ -30,3 +29,5 @@ def knowledge_graph_tool(
         })
     except Exception as e:
         return f"Errore durante l'interrogazione del database grafico: {str(e)}"
+    
+    
