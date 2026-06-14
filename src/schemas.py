@@ -12,15 +12,14 @@ class AgentState(TypedDict):
     reasoning_trace: Annotated[list[str], add_trace] 
     tool_outputs: Annotated[list[ToolMessage], add_messages]
     retrived_documents: list[str] # RAG
-    #web_search_results: list[str]
-    post_draft: Annotated[PostFormat, lambda old_draft, new_draft: new_draft]
+    post_draft: Annotated[PostFormat | None, lambda old_draft, new_draft: new_draft]
     kg_summary: str #contiene i topic già trattati e titolo,categoria e topic dei post piu recenti
     kg_consistency_context: str #contiene titoli e claim dei post relativi al topic corrente
-    #requested_topic: str  # SI PUO TOGLIERE PERCHE HO MESSO planning_information
     matched_topic: str    # Il topic più simile trovato dall'indice vettoriale di Neo4j
     planning_information: Annotated[PlannerFormat, lambda old_plan, new_plan: new_plan]
     tool_usage_justification: str
     posts_published_count: int
+    extracted_claims: list[str] #claim estratti
 
 class PlannedPost(BaseModel):
     category: str = Field(description="La categoria scelta (es. HOW TO, REVIEW, NEWS, EVENTS)")

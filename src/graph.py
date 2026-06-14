@@ -11,18 +11,19 @@ from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
 
 from schemas import AgentState, HumanInterrupt, PostFormat, PlannerFormat
-from prompts import SYSTEM_PROMPT, PLANNER_PROMPT, FORMAT_ARTICLE_PROMPT
+from prompts import SYSTEM_PROMPT, PLANNER_PROMPT, FORMAT_ARTICLE_PROMPT, EXTRACTION_SYSTEM_PROMPT
 from database.neo4j_graph import EditorialKnowledgeGraphManager
 
 from tools.web_search_tool import web_search_tool
 from tools.rag_tool import rag_tool
 from tools.knowledge_graph_tool import knowledge_graph_tool, kg_manager
 from tools.research_judge_tool import research_judge_tool
+from tools.extract_claims_tool import extract_claims_tool
 
 load_dotenv(".env")
 
 # Lista di tool
-tools = [web_search_tool, rag_tool, knowledge_graph_tool, research_judge_tool] 
+tools = [web_search_tool, rag_tool, knowledge_graph_tool, research_judge_tool, extract_claims_tool] 
 tools_by_name = {tool.name: tool for tool in tools}
 
 # Inizializzazione del modello
@@ -35,6 +36,7 @@ from langchain_core.tools import Tool
 
 # Diamo accesso al modello ai tool
 llm_with_tools = llm.bind_tools(tools)
+#llm_extractor = llm.bind_tools([extract_claims_tool])
 
 kgManager = EditorialKnowledgeGraphManager()
 
@@ -59,34 +61,46 @@ def llm_node(state: AgentState) -> Union[Command[Literal["__end__"]], dict]:
     """Il modello analizza lo stato corrente e decide se chiamare un tool oppure fornire la risposta finale.
 
        Restituisce lo stato aggiornato con la risposta del modello e aggiorna la reasoning trace con i suoi pensieri.
-    """ 
+    """      
+    new_messages = []
+    
     planning_info = state.get("planning_information")
 
     if not planning_info or not planning_info.planned_post_sequence:
         print(f"[LLM]: Nessun post da generare: {planning_info}\n")
         return Command(goto=END)
     
-    current_post = planning_info.planned_post_sequence[0]
+    if state.get("post_draft") and not state.get("extracted_claims"):
+        post = state.get("post_draft")
+        post_content = f"{post.category}\n{post.title}\n{post.introduction}\n{post.body}\n{post.conclusion}"
+        
+        response = llm_with_tools.invoke([
+            SystemMessage(content=EXTRACTION_SYSTEM_PROMPT),
+            HumanMessage(content=f"Estrai i claim per il seguente post:\n{post_content}")
+        ])
+        
+        new_messages.append(response)
+    else:
+        current_post = planning_info.planned_post_sequence[0]
 
-    current_post_str = f"Categoria: {current_post.category} | Argomento (Topic): {current_post.topic}"
+        current_post_str = f"Categoria: {current_post.category} | Argomento (Topic): {current_post.topic}"
 
-    print(f"[LLM]: Fare il post su {current_post_str}\n")
+        print(f"[LLM]: Fare il post su {current_post_str}\n")
 
-    input_messages = state.get("messages", [])
-    new_messages = []
+        input_messages = state.get("messages", [])
 
-    if not input_messages:
-        # Generiamo un messaggio da inviare a LLM dato che abbiamo cancellato la cronologia dei messaggi
-        input_msg = HumanMessage(content="Procedi con la generazione del prossimo post.")
+        if not input_messages:
+            # Generiamo un messaggio da inviare a LLM dato che abbiamo cancellato la cronologia dei messaggi
+            input_msg = HumanMessage(content="Procedi con la generazione del prossimo post.")
 
-        input_messages = [input_msg]
+            input_messages = [input_msg]
 
-        new_messages.append(input_msg)
-                          
-    # Invocazione del modello
-    response = llm_with_tools.invoke([SystemMessage(content=SYSTEM_PROMPT.format(planning_info=current_post_str))] + input_messages)
+            new_messages.append(input_msg)
+                            
+        # Invocazione del modello
+        response = llm_with_tools.invoke([SystemMessage(content=SYSTEM_PROMPT.format(planning_info=current_post_str))] + input_messages)
 
-    new_messages.append(response)
+        new_messages.append(response)
 
     print(f"[LLM]: new_messages: {new_messages}")
 
@@ -118,7 +132,6 @@ def llm_node(state: AgentState) -> Union[Command[Literal["__end__"]], dict]:
         tool_thought = response.tool_calls[0]["args"].get("justification", "Nessuna giustificazione rilevata.")
         current_thought = tool_thought
         
-        # Gestione di sicurezza per lo strip
         if isinstance(tool_thought, str):
             current_thought = tool_thought.strip()
         else:
@@ -151,6 +164,7 @@ def tool_node(state: AgentState):
     
     consistency_txt = state.get("kg_consistency_context", "")
     matched_topic_txt = state.get("matched_topic", "")
+    extracted_claims = state.get("extracted_claims", [])
 
     # Eseguiamo tutte le chiamate ai tool
     for tool_call in tool_calls: 
@@ -177,6 +191,15 @@ def tool_node(state: AgentState):
         # Verifichiamo se è stato chiamato il tool RAG
         if tool_call["name"] == "rag_tool" and observation_str: # observation non deve essere ""
             rag_retrieved_docs = observation_str.split("|")
+            
+        # Se il tool chiamato è quello dei claim, estraiamo subito i dati nello stato
+        if tool_call["name"] == "extract_claims_tool":
+            try:
+                data = json.loads(observation_str)
+                # Salviamo i claim direttamente nel dizionario di ritorno
+                extracted_claims = data.get("claims", [])
+            except:
+                extracted_claims = []
 
         #if tool_call["name"] == "web_search_tool" and observation_str:
          #   web_search_res = observation_str.split("|")
@@ -194,9 +217,9 @@ def tool_node(state: AgentState):
         "messages": tool_outputs, 
         "tool_outputs": tool_outputs,
         "retrived_documents": rag_retrieved_docs,
-        #"web_search_results": web_search_res,
         "kg_consistency_context": consistency_txt, 
-        "matched_topic": matched_topic_txt
+        "matched_topic": matched_topic_txt,
+        "extracted_claims": extracted_claims 
     }
 
 def llm_format_node(state: AgentState):
@@ -221,7 +244,7 @@ def llm_format_node(state: AgentState):
 
     return {"post_draft": results}
 
-def hitl_review_post(state: AgentState) -> Command[Literal["llm", "knowledge_graph"]]:
+def hitl_review_post(state: AgentState) -> Command[Literal["llm"]]:
     """Implementa Human In The Loop. Presenta la bozza del post generata all'utente in modo che possa: approvarla, modificarla, rifiutarla in modo
        che possa essere rigenerata.
     """
@@ -279,7 +302,7 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm", "knowledge_gra
         # L'utente ha approvato la bozza generata
         msg.append(HumanMessage(content=f"La bozza del post {post_draft.title} è stata approvata."))
         
-        goto = "knowledge_graph" 
+        #goto = "knowledge_graph" 
 
         update = {"messages": msg}
 
@@ -302,7 +325,7 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm", "knowledge_gra
 
         msg.append(HumanMessage(content=f"La bozza del post {post_draft.title} è stata modificata manualmente dall'utente e poi approvata."))
 
-        goto = "knowledge_graph" 
+        #goto = "knowledge_graph" 
 
         update = {
             "messages": msg,
@@ -324,7 +347,7 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm", "knowledge_gra
 
         msg.append(HumanMessage(content=f"L'utente ha rifiutato la bozza del post {post_draft.title}. Usa questo feedback per riscrivere il post: {user_feedback}"))
 
-        goto = "llm"
+        #goto = "llm"
 
         update = {"messages": msg}
 
@@ -339,9 +362,47 @@ def should_continue(state: AgentState):
 
     if last_message.tool_calls:
         return "continue"
+    elif state.get("extracted_claims"):
+        return "save_to_knowledge_graph"
     else:
         return "format_article"
     
+#def extract_claims_node(state: AgentState):
+    post = state.get("post_draft")
+    post_content = f"{post.category}\n{post.title}\n{post.introduction}\n{post.body}\n{post.conclusion}"
+    
+    response = llm_extractor.invoke([
+        SystemMessage(content=EXTRACTION_SYSTEM_PROMPT),
+        HumanMessage(content=f"Estrai i claim per il seguente post:\n{post_content}")
+    ])
+    
+    tool_justification = ""
+    current_thought = ""
+    
+    if response.tool_calls:
+        print(f"[RISPOSTA CHATGPT]: {response}\n")
+        
+        tool_thought = response.tool_calls[0]["args"].get("justification", "Nessuna giustificazione rilevata.")
+        current_thought = tool_thought
+        
+        # Gestione di sicurezza per lo strip
+        if isinstance(tool_thought, str):
+            current_thought = tool_thought.strip()
+        else:
+            current_thought = str(tool_thought)
+            
+        tool_name = response.tool_calls[0]["name"]
+        tool_justification = f"Ho usato il tool {tool_name} per il seguente motivo: {current_thought}"
+
+        print(f"[LLM]: giustificazione uso dei tool: {tool_justification}\n")
+
+    return {
+        "messages": [response],
+        "reasoning_trace": [current_thought],
+        "tool_usage_justification" : tool_justification
+    }
+      
+
 def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]:
     """Nodo finale del grafo: prende la bozza formattata dall'LLM, estrae i claim dal testo e salva tutto su Neo4j."""
     
@@ -349,6 +410,7 @@ def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]
     post = state.get("post_draft")
     matched_topic = state.get("matched_topic", "")
     count = state.get("posts_published_count", 0) # 0 deafult
+    claims = state.get("extracted_claims", [])
     
     # Calcolo data di pubblicazione con delay di 2 giorni per post
     publish_date = datetime.now() + timedelta(days=count * 2)
@@ -370,8 +432,8 @@ def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]
         print(f"- {source}")
 
     # Estrazione automatica dei Claim dalle righe del body
-    lines = [line.strip() for line in post.body.split("\n") if line.strip()]
-    claims_database = lines[:4] if lines else [f"Linee guida e indicazioni tecniche per {post.title}"]
+    #lines = [line.strip() for line in post.body.split("\n") if line.strip()]
+    #claims_database = lines[:4] if lines else [f"Linee guida e indicazioni tecniche per {post.title}"]
 
     print("\n[KNOWLEDGE GRAPH]: Salvataggio dell'articolo e aggiornamento delle relazioni in corso...")
     
@@ -380,7 +442,7 @@ def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]
             post_draft=post.model_dump(), # Converte l'oggetto Pydantic in dizionario standard
             requested_topic=requested_topic, 
             matched_topic=matched_topic, 
-            claims=claims_database,
+            claims=claims,
             publish_date=publish_date.date().isoformat()
         )
         print(f"[KNOWLEDGE GRAPH]: Il post con titolo {post.title} è stato aggiunto nel Knowledge graph")
@@ -402,7 +464,9 @@ def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]
             update={
                 "messages": delete_messages, # Eliminiamo tutti i messaggi riguardanti il post appena pubblicato
                 "posts_published_count": count + 1, # incrementiamo il numero di post pubblicati
-                "planning_information": updated_planning_info               
+                "planning_information": updated_planning_info,
+                "post_draft": None,        # <--- RESET: Impedisce ri-esecuzioni
+                "extracted_claims": []           
             }
         )
     else:
@@ -420,6 +484,7 @@ graph.add_node("tool", tool_node)
 graph.add_node("format", llm_format_node)
 graph.add_node("knowledge_graph", add_post_to_kg_node)
 graph.add_node("hitl_review", hitl_review_post)
+#graph.add_node("llm_extractor", extract_claims_node)
 
 graph.add_edge(START, "planner")
 graph.add_edge("planner", "llm")
@@ -428,10 +493,14 @@ graph.add_conditional_edges(
     should_continue,
     {
         "continue": "tool",
-        "format_article": "format"
+        "format_article": "format",
+        "save_to_knowledge_graph": "knowledge_graph"
     }
 )
+
 graph.add_edge("tool", "llm")
 graph.add_edge("format", "hitl_review")
+#graph.add_edge("llm_extractor", "tool") 
+#graph.add_edge("tool", "knowledge_graph")
 
 agent = graph.compile()
