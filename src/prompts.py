@@ -91,10 +91,10 @@ Per prima cosa guarda l'ultimo messaggio nella cronologia dei messaggi:
                 b) Se le informazioni recuperate dal rag_tool non sono sufficienti e necessitano di un'integrazione. 
                 
         4. **Filtraggio fonti (Judge)**:
-            - Non appena ricevi l'output testuale del `web_search_tool` devi IMMEDIATAMENTE invocare il `research_judge_tool` passando come argomenti l'intero testo grezzo restituito dalla ricerca e l'argomento di riferimento.
+            - Non appena ricevi l'output del `web_search_tool` devi IMMEDIATAMENTE invocare il `research_judge_tool` passando come argomenti l'intero testo grezzo restituito dalla ricerca e l'argomento di riferimento.
             - Esamina il resoconto restituito dal `research_judge_tool`: 
                 a) se sono presenti "FONTI SELEZIONATE", utilizza solo ed esclusivamente quelle per arricchire l'articolo. Ignora totalmente le "FONTI SCARTATE". 
-                9.	b) Se nessuna fonte ha superato i criteri minimi, formula una query di ri-cerca web differente e riprova. Puoi ripetere il ciclo Web Search -> Judge al massimo una volta.Se anche il secondo tentativo fallisce, procedi usan-do le informazioni già raccolte.
+                b) Se nessuna fonte ha superato i criteri minimi, formula una query di ri-cerca web differente e riprova. Puoi ripetere il ciclo Web Search -> Judge al massimo una volta.Se anche il secondo tentativo fallisce, procedi usan-do le informazioni già raccolte.
     
     - **CASO 2: Riscrittura (bozza rifiutata)**:
         L'utente ha rifiutato la bozza del post e ha fornito un feedback per guidarti nella riscrittura:

@@ -195,7 +195,8 @@ def tool_node(state: AgentState):
         # Se il tool chiamato è quello dei claim, estraiamo subito i dati nello stato
         if tool_call["name"] == "extract_claims_tool":
             try:
-                data = json.loads(observation_str)
+                clean_str = observation_str.strip().strip("`").replace("json", "").strip()
+                data = json.loads(clean_str)
                 # Salviamo i claim direttamente nel dizionario di ritorno
                 extracted_claims = data.get("claims", [])
             except:
