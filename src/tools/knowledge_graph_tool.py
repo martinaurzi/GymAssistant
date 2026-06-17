@@ -11,16 +11,15 @@ def knowledge_graph_tool(
     justification: Annotated[str, "Spiegazione obbligatoria del perché stai usando questo tool proprio adesso."]
 ) -> str:
     """
-    Strumento unico per interagire con la base di conoscenza interna su Neo4j.
-    
-    Effettua una RICERCA SEMANTICA per ricavare quanto già è stato scritto sul topic e poter scrivere un post coerente sull'argomento.
-    
-    Argomenti:
-        topic: Il topic o argomento da cercare nel grafo per la coerenza semantica.
-        justification: La giustificazione obbligatoria per l'utilizzo del tool.
+        Effettua una ricerca semantica per ricavare quanto già è stato scritto sul topic e poter scrivere un post coerente sull'argomento.
+        
+        Argomenti:
+            - topic: Il topic o argomento da cercare nel grafo per la coerenza semantica.
+            - justification: La giustificazione obbligatoria per l'utilizzo del tool.
     """
     try:
         kg_res = kg_manager.search_similar_content(topic)
+
         print(f"[KG TOOL] {kg_res['context']}\n")
         
         return json.dumps({
@@ -29,5 +28,3 @@ def knowledge_graph_tool(
         })
     except Exception as e:
         return f"Errore durante l'interrogazione del database grafico: {str(e)}"
-    
-    

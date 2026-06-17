@@ -17,7 +17,6 @@ class RagManager:
         self.text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(chunk_size=500, chunk_overlap=50)
         
         # Inizializzazione del modello di embeddings
-        #self.embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview", output_dimensionality=768)
         self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
         # Inizializzazione di Chroma
@@ -40,7 +39,7 @@ class RagManager:
         for content in main_content(html_elements_to_remove):
             content.decompose()
 
-        text = main_content.get_text(separator=" ", strip=True) # separator per evitare parole incollate, strip=True per eliminare spazi bianchi inutili
+        text = main_content.get_text(separator=" ", strip=True) # separator per evitare parole incollate
 
         return Document(
             page_content=text, 

@@ -16,14 +16,15 @@ def web_search_tool(
 )-> str:
     """Cerca informazioni su internet usando la Tavily search API.
 
-    Argomenti:
-        query: Una singola query di ricerca da eseguire
-        justification: La giustificazione obbligatoria per l'utilizzo del tool.
-        max_results: Massimo numero di risultati da restituire
-        
-    Restituisce:
-        Una stringa formattata con i risultati della ricerca
+        Argomenti:
+            - query: Una singola query di ricerca da eseguire
+            - justification: La giustificazione obbligatoria per l'utilizzo del tool.
+            - max_results: Massimo numero di risultati da restituire
+            
+        Restituisce:
+            Una stringa formattata con i risultati della ricerca
     """
+    
     tavily_results = tavily_client.search(query=query, max_results=max_results, include_raw_content='markdown', include_images=False)
 
     cleaned_res = []

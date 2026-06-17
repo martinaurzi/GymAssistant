@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, RemoveMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
-#from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
 
@@ -31,12 +30,8 @@ tools_by_name = {tool.name: tool for tool in tools}
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 llm_groq = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
 
-from pydantic import create_model, Field
-from langchain_core.tools import Tool
-
 # Diamo accesso al modello ai tool
 llm_with_tools = llm.bind_tools(tools)
-#llm_extractor = llm.bind_tools([extract_claims_tool])
 
 kgManager = EditorialKnowledgeGraphManager()
 
@@ -66,10 +61,12 @@ def llm_node(state: AgentState) -> Union[Command[Literal["__end__"]], dict]:
     
     planning_info = state.get("planning_information")
 
+    # Controlliamo se il planner ha generato il planning
     if not planning_info or not planning_info.planned_post_sequence:
         print(f"[LLM]: Nessun post da generare: {planning_info}\n")
         return Command(goto=END)
     
+    # Se la bozza del post è stata creata estraiamo i claims
     if state.get("post_draft") and not state.get("extracted_claims"):
         post = state.get("post_draft")
         post_content = f"{post.category}\n{post.title}\n{post.introduction}\n{post.body}\n{post.conclusion}"
@@ -81,6 +78,7 @@ def llm_node(state: AgentState) -> Union[Command[Literal["__end__"]], dict]:
         
         new_messages.append(response)
     else:
+        # Prendiamo il primo post pianificato dal planner node
         current_post = planning_info.planned_post_sequence[0]
 
         current_post_str = f"Categoria: {current_post.category} | Argomento (Topic): {current_post.topic}"
@@ -102,8 +100,6 @@ def llm_node(state: AgentState) -> Union[Command[Literal["__end__"]], dict]:
 
         new_messages.append(response)
 
-    print(f"[LLM]: new_messages: {new_messages}")
-
     updated_state = {
         "messages": new_messages
     }
@@ -111,33 +107,11 @@ def llm_node(state: AgentState) -> Union[Command[Literal["__end__"]], dict]:
     tool_justification = ""
     current_thought = ""
 
-    if response.tool_calls:
-        print(f"[RISPOSTA CHATGPT]: {response}\n")
-        # Reasoning trace con modello gemini-2.5-flash
-        #if isinstance(response.content, list):
-             #reasoning_text = []
+    if response.tool_calls:        
+        # Recuperiamo la giustificazione dell'uso del tool corrente
+        current_thought = response.tool_calls[0]["args"].get("justification", "Nessuna giustificazione rilevata.")
 
-            #for block in response.content:
-                #if isinstance(block, dict) and "text" in block:
-                    #reasoning_text.append(block["text"])
-                #elif isinstance(block, str): # continuo dopo "extras"
-                    #reasoning_text.append(block)
-            
-            # Uniamo tutti i pezzi in un'unica stringa
-            #current_thought = "".join(reasoning_text)
-        #else:
-           # current_thought = str(response.content)
-        
-        # Reasoning trace con modello gpt-4o-mini
-        tool_thought = response.tool_calls[0]["args"].get("justification", "Nessuna giustificazione rilevata.")
-        current_thought = tool_thought
-        
-        if isinstance(tool_thought, str):
-            current_thought = tool_thought.strip()
-        else:
-            current_thought = str(tool_thought)
-
-        #current_thought = current_thought.strip()
+        current_thought = current_thought.strip()
 
         tool_name = response.tool_calls[0]["name"]
         tool_justification = f"Ho usato il tool {tool_name} per il seguente motivo: {current_thought}"
@@ -154,13 +128,12 @@ def tool_node(state: AgentState):
 
        Restituisce lo stato aggiornato con i risultati delle esecuzioni dei tool.
     """
-    last_message = state["messages"][-1] # Ultimo messaggio generato dall'LLM
+    last_message = state["messages"][-1] 
     
-    tool_calls = last_message.tool_calls # Richieste di chiamate ai tool dell'LLM
+    tool_calls = last_message.tool_calls
 
     tool_outputs = []
     rag_retrieved_docs = []
-    #web_search_res = []
     
     consistency_txt = state.get("kg_consistency_context", "")
     matched_topic_txt = state.get("matched_topic", "")
@@ -176,6 +149,7 @@ def tool_node(state: AgentState):
 
         observation_str = str(observation)
 
+        # Verifichiamo se è stato chiamato il KG tool
         if tool_call["name"] == "knowledge_graph_tool":
             try:
                 data = json.loads(observation_str)
@@ -189,7 +163,7 @@ def tool_node(state: AgentState):
                 consistency_txt = observation_str
 
         # Verifichiamo se è stato chiamato il tool RAG
-        if tool_call["name"] == "rag_tool" and observation_str: # observation non deve essere ""
+        if tool_call["name"] == "rag_tool" and observation_str: 
             rag_retrieved_docs = observation_str.split("|")
             
         # Se il tool chiamato è quello dei claim, estraiamo subito i dati nello stato
@@ -197,13 +171,10 @@ def tool_node(state: AgentState):
             try:
                 clean_str = observation_str.strip().strip("`").replace("json", "").strip()
                 data = json.loads(clean_str)
-                # Salviamo i claim direttamente nel dizionario di ritorno
+                
                 extracted_claims = data.get("claims", [])
             except:
                 extracted_claims = []
-
-        #if tool_call["name"] == "web_search_tool" and observation_str:
-         #   web_search_res = observation_str.split("|")
 
         # Messaggio di risposta del tool
         tool_outputs.append(
@@ -225,19 +196,12 @@ def tool_node(state: AgentState):
 
 def llm_format_node(state: AgentState):
     """Formatta le informazioni restituite dal tool di ricerca per generare la bozza dell'articolo"""
-
-    print("[WRITER] Formatto l'articolo...")
     
-    # Recuperiamo il contesto di coerenza salvato nello state
+    # Recuperiamo il contesto per mantenere la coerenza 
     consistency_data = state.get("kg_consistency_context", "")
 
     if not consistency_data or consistency_data.strip() == "":
-        # !! VEDERE SE CONVIENE FORNIRE STRINGA VUOTA
         consistency_data = "Nessun vincolo precedente trovato per questo argomento. Procedi liberamente."
-
-    #rag_docs = state.get("retrived_documents")
-    #web_search_res = state.get("web_search_results")
-    #llm_writer_structured = llm_groq.with_structured_output(PostFormat)
 
     llm_writer_structured = llm.with_structured_output(PostFormat)
 
@@ -246,11 +210,12 @@ def llm_format_node(state: AgentState):
     return {"post_draft": results}
 
 def hitl_review_post(state: AgentState) -> Command[Literal["llm"]]:
-    """Implementa Human In The Loop. Presenta la bozza del post generata all'utente in modo che possa: approvarla, modificarla, rifiutarla in modo
-       che possa essere rigenerata.
+    """Implementa Human In The Loop. 
+    
+        Presenta la bozza del post generata all'utente in modo che possa: approvarla, modificarla, rifiutarla in modo che possa essere rigenerata.
     """
 
-    # Recuperiamo la bozza del post scritta da llm
+    # Recuperiamo la bozza del post
     post_draft = state.get("post_draft")
 
     if not post_draft:
@@ -266,7 +231,6 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm"]]:
         f"**Fonti**: {post_draft.sources}\n"
     )
 
-    # Creiamo dei messaggi
     msg = [HumanMessage(content=f"Revisione della bozza del post con titolo {post_draft.title}.")]
 
     reasoning_trace = state.get("reasoning_trace")
@@ -295,15 +259,11 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm"]]:
 
     response = interrupt([request])[0]
 
-    # Inizializzazione di goto e update
-    goto = "llm"
     update = {}
 
     if response["type"] == "accept":
         # L'utente ha approvato la bozza generata
         msg.append(HumanMessage(content=f"La bozza del post {post_draft.title} è stata approvata."))
-        
-        #goto = "knowledge_graph" 
 
         update = {"messages": msg}
 
@@ -316,7 +276,7 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm"]]:
             edited_args = edited_args["args"]
 
         edited_post_draft = PostFormat(
-            category = edited_args.get("category", post_draft.category),
+            category = post_draft.category,
             title = edited_args.get("title", post_draft.title),
             introduction = edited_args.get("introduction", post_draft.introduction),
             body = edited_args.get("body", post_draft.body),
@@ -325,8 +285,6 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm"]]:
         )
 
         msg.append(HumanMessage(content=f"La bozza del post {post_draft.title} è stata modificata manualmente dall'utente e poi approvata."))
-
-        #goto = "knowledge_graph" 
 
         update = {
             "messages": msg,
@@ -337,7 +295,7 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm"]]:
         # L'utente rifiuta la bozza che deve essere rigenerata
         response_args = response["args"]
 
-        # Controllo effettuato se si usa Agent Inbox
+        # Controllo effettuato per Agent Inbox
         if isinstance(response_args, dict) and "args" in response_args:
             response_args = response_args["args"]
 
@@ -348,17 +306,19 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm"]]:
 
         msg.append(HumanMessage(content=f"L'utente ha rifiutato la bozza del post {post_draft.title}. Usa questo feedback per riscrivere il post: {user_feedback}"))
 
-        #goto = "llm"
-
         update = {"messages": msg}
 
     else:
         raise ValueError(f"Risposta non valida: {response}")
     
-    return Command(goto=goto, update=update)
+    return Command(goto="llm", update=update)
 
 def should_continue(state: AgentState):
-    """Decide se è possibile scrivere la bozza dell'articolo oppure è necessario chiamare altri tool"""
+    """Decide se è necessario chiamare altri tool oppure se scrivere la bozza dell'articolo.
+
+       Se invece la bozza è già stata scritta e sono stati estratti i claims, si procede col salvaggio del post nel KG
+    """
+
     last_message = state["messages"][-1]
 
     if last_message.tool_calls:
@@ -368,75 +328,22 @@ def should_continue(state: AgentState):
     else:
         return "format_article"
     
-#def extract_claims_node(state: AgentState):
-    post = state.get("post_draft")
-    post_content = f"{post.category}\n{post.title}\n{post.introduction}\n{post.body}\n{post.conclusion}"
-    
-    response = llm_extractor.invoke([
-        SystemMessage(content=EXTRACTION_SYSTEM_PROMPT),
-        HumanMessage(content=f"Estrai i claim per il seguente post:\n{post_content}")
-    ])
-    
-    tool_justification = ""
-    current_thought = ""
-    
-    if response.tool_calls:
-        print(f"[RISPOSTA CHATGPT]: {response}\n")
-        
-        tool_thought = response.tool_calls[0]["args"].get("justification", "Nessuna giustificazione rilevata.")
-        current_thought = tool_thought
-        
-        # Gestione di sicurezza per lo strip
-        if isinstance(tool_thought, str):
-            current_thought = tool_thought.strip()
-        else:
-            current_thought = str(tool_thought)
-            
-        tool_name = response.tool_calls[0]["name"]
-        tool_justification = f"Ho usato il tool {tool_name} per il seguente motivo: {current_thought}"
-
-        print(f"[LLM]: giustificazione uso dei tool: {tool_justification}\n")
-
-    return {
-        "messages": [response],
-        "reasoning_trace": [current_thought],
-        "tool_usage_justification" : tool_justification
-    }
-      
-
 def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]:
-    """Nodo finale del grafo: prende la bozza formattata dall'LLM, estrae i claim dal testo e salva tutto su Neo4j."""
+    """Salva il post e i relativi claims nel Knowledge Graph"""
     
     planning_info = state.get("planning_information")
     post = state.get("post_draft")
     matched_topic = state.get("matched_topic", "")
-    count = state.get("posts_published_count", 0) # 0 deafult
+    count = state.get("posts_published_count", 0) 
     claims = state.get("extracted_claims", [])
     
-    # Calcolo data di pubblicazione con delay di 2 giorni per post
+    # Calcolo data di pubblicazione: un post ogni 2 giorni
     publish_date = datetime.now() + timedelta(days=count * 2)
     
     requested_topic = post.title
 
     if planning_info and planning_info.planned_post_sequence:
         requested_topic = planning_info.planned_post_sequence[0].topic
-
-    print(f"[KNOWLEDGE GRAPH]: procedo ad aggiungere il post:")
-    print(f"\nTitolo: {post.title}\n")
-    print(f"Categoria: {post.category}\n")
-    print(f"{post.introduction}\n")
-    print(f"{post.body}\n")
-    print(f"{post.conclusion}\n")
-
-    print("Fonti:")
-    for source in post.sources:
-        print(f"- {source}")
-
-    # Estrazione automatica dei Claim dalle righe del body
-    #lines = [line.strip() for line in post.body.split("\n") if line.strip()]
-    #claims_database = lines[:4] if lines else [f"Linee guida e indicazioni tecniche per {post.title}"]
-
-    print("\n[KNOWLEDGE GRAPH]: Salvataggio dell'articolo e aggiornamento delle relazioni in corso...")
     
     try:
         kg_manager.add_approved_post(
@@ -446,6 +353,7 @@ def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]
             claims=claims,
             publish_date=publish_date.date().isoformat()
         )
+
         print(f"[KNOWLEDGE GRAPH]: Il post con titolo {post.title} è stato aggiunto nel Knowledge graph")
     except Exception as e:
         print(f"[KNOWLEDGE GRAPH]: Impossibile aggiungere il post al Knowledge graph: {str(e)}")
@@ -466,16 +374,14 @@ def add_post_to_kg_node(state: AgentState) -> Command[Literal["llm", "__end__"]]
                 "messages": delete_messages, # Eliminiamo tutti i messaggi riguardanti il post appena pubblicato
                 "posts_published_count": count + 1, # incrementiamo il numero di post pubblicati
                 "planning_information": updated_planning_info,
-                "post_draft": None,        # <--- RESET: Impedisce ri-esecuzioni
+                "post_draft": None,        
                 "extracted_claims": []           
             }
         )
     else:
         print(f"[KNOWLEDGE GRAPH]: Non ci sono più post da pubblicare\n")
 
-        return Command(
-            goto=END
-        )
+        return Command(goto=END)
     
 graph = StateGraph(AgentState)
 
@@ -485,7 +391,6 @@ graph.add_node("tool", tool_node)
 graph.add_node("format", llm_format_node)
 graph.add_node("knowledge_graph", add_post_to_kg_node)
 graph.add_node("hitl_review", hitl_review_post)
-#graph.add_node("llm_extractor", extract_claims_node)
 
 graph.add_edge(START, "planner")
 graph.add_edge("planner", "llm")
@@ -501,7 +406,5 @@ graph.add_conditional_edges(
 
 graph.add_edge("tool", "llm")
 graph.add_edge("format", "hitl_review")
-#graph.add_edge("llm_extractor", "tool") 
-#graph.add_edge("tool", "knowledge_graph")
 
 agent = graph.compile()

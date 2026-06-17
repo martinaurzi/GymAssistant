@@ -13,9 +13,9 @@ def rag_tool(
 ) -> str:
     """Recupera i documenti più rilevanti rispetto alla query.
 
-    Argomenti:
-        query: La stringa di ricerca da usare per il recupero dei documenti.
-        justification: La giustificazione obbligatoria per l'utilizzo del tool.
+        Argomenti:
+            - query: La stringa di ricerca da usare per il recupero dei documenti.
+            - justification: La giustificazione obbligatoria per l'utilizzo del tool.
     """
 
     retrieved_docs = rag_manager.retrieve_documents(query=query)

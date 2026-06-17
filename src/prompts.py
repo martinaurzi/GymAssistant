@@ -191,7 +191,6 @@ Sei un analista editoriale. Il tuo compito è estrarre i 3 affermazioni principa
 <Available Tools>
 Per estrarre le affermazioni(claim) hai accesso al seguente tool:
 1. **extract_claims_tool**: per estrarre dal post esattamente i 3 claim.
-
 </Available Tools>
 
 <Instructions>

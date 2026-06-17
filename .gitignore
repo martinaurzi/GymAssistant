@@ -1,5 +1,7 @@
 chroma_db/
 
+src/model/finetuned_model
+
 .langgraph_api/
 .langgraph_dist/
 

@@ -17,10 +17,7 @@ class EditorialKnowledgeGraphManager:
             model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
         )
         
-        # Setup dell'indice vettoriale (Dimensione 384)
-        # CREATE VECTOR INDEX è un comando nativo di Neo4j, con FOR indichiamo quali Label deve tenere in considerazione, mentre con ON indichiamo dove sarà contenuto l'embedding
-        # Con indexConfig indichiamo i parametri matematici dello spazio geometrico in cui i vettori verranno inseriti
-        # la dimensione del vettore dipende dal modello usato, usiamo cosine perché il modello misuta l'ampiezza dell'angolo formato dai due vettori rispetto l'origine dello spazio
+        # Creazione del vector index per effettuare la ricerca semantica usando la cosine similarity
         index_setup_query = """
         CREATE VECTOR INDEX topic_index IF NOT EXISTS
         FOR (t:Topic) ON (t.embedding)
@@ -29,6 +26,7 @@ class EditorialKnowledgeGraphManager:
           `vector.similarity_function`: 'cosine'
         } }
         """
+
         with self.driver.session() as session:
             session.run(index_setup_query)
             print("[NEO4J]: Controllo/Creazione indice vettoriale completato.")
@@ -39,22 +37,26 @@ class EditorialKnowledgeGraphManager:
         
     def get_kg_summary(self) -> str:
         """
-        Fase Topic Suggestion: Recupera lo stato attuale per il Planner.
-        Ritorna gli ultimi post e tutti i topic coperti per evitare ripetizioni.
+            Fase Topic Suggestion: Recupera lo stato attuale per il Planner.
+
+            Ritorna gli ultimi post e tutti i topic coperti per evitare ripetizioni.
         """
         with self.driver.session() as session:
             # Estrazione topic già trattati finora
-            topics_query = "MATCH (t:Topic) RETURN t.name AS topic" #rinominato per non scrivere record[t.name]
+            topics_query = "MATCH (t:Topic) RETURN t.name AS topic" 
+
             topics_res = session.run(topics_query)
-            #Neo4j restituisce una lista di oggetti Record, ma dobbiamo prendere solo la stringa relativa al name del topic
+            
             topics = [record["topic"] for record in topics_res]
             
+            # Recuperiamo i 3 post più recenti
             posts_query = """
             MATCH (p:Post)-[:COVERS]->(t:Topic)
             RETURN p.title AS title, p.category AS category, p.createdAt AS createdAt, collect(t.name) AS topics
             ORDER BY createdAt DESC
             LIMIT 3
             """
+
             posts_res = session.run(posts_query)
             
             recent_posts = [
@@ -68,7 +70,7 @@ class EditorialKnowledgeGraphManager:
             
             # Se il database è completamente vuoto 
             if not topics and not recent_posts:
-                return "Contenuto Storico: Il database è vuoto. Il blog è completamente nuovo: non è presente nessun topic o post precedente."
+                return "Il blog è nuovo: non è presente nessun topic o post precedente."
             
             # Formattazione dello storico in una stringa leggibile
             topics_str = ", ".join(topics)
@@ -82,7 +84,10 @@ class EditorialKnowledgeGraphManager:
             
     def search_similar_content(self, topic: str) -> dict:
         """Ricerca semantica per coerenza editoriale."""
+
+        # Creazione embedding del topic
         query_vector = self.embeddings.embed_query(topic)
+
         query = """
         MATCH (t:Topic)
         WHERE t.embedding IS NOT NULL
@@ -100,6 +105,7 @@ class EditorialKnowledgeGraphManager:
             collect(c.text) AS claims 
         LIMIT 2
         """
+
         with self.driver.session() as session:
             result = session.run(query, vector=query_vector)
             records = list(result)
@@ -122,9 +128,8 @@ class EditorialKnowledgeGraphManager:
             } 
         
     def add_approved_post(self, post_draft: dict, requested_topic: str, matched_topic: str, claims: list, publish_date: str):
-        """
-        Crea il post e lo associa tramite :COVERS sia al topic richiesto sia al topic affine trovato.
-        """
+        """Crea il post e lo associa tramite :COVERS sia al topic richiesto sia al topic affine trovato."""
+        
         # Generiamo l'embedding del topic principale dell'articolo
         topic_vector = self.embeddings.embed_query(requested_topic)
    

@@ -15,15 +15,16 @@ def research_judge_tool(
     topic: str,
     justification: Annotated[str, "Spiegazione obbligatoria del perché stai usando questo tool proprio adesso."]
 ) -> str:
-    """Valuta le fonti web separate da '|' calcolando un punteggio finale ponderato 
-    e selezionando solo quelle che superano i requisiti minimi di qualità (punteggi >= 7).
+    """Valuta le fonti web calcolando un punteggio finale ponderato e selezionando solo quelle che superano i requisiti minimi di 
+       qualità (punteggi >= 7).
     
-    Argomenti:
-        search_results_str: La stringa contenente i risultati formattati separati da '|'
-        topic: Il topic dell'articolo corrente
-        justification: La giustificazione obbligatoria per l'utilizzo del tool.
+        Argomenti:
+            - search_results_str: La stringa contenente i risultati formattati separati da '|'
+            - topic: Il topic dell'articolo corrente
+            - justification: La giustificazione obbligatoria per l'utilizzo del tool.
     """
     
+    # Formattiamo le fonti per passarle al modello
     sources = search_results_str.split("|")
     formatted_sources_text = []
     
@@ -35,6 +36,7 @@ def research_judge_tool(
             
     text_to_analyze = "\n".join(formatted_sources_text) 
 
+    # Instanziamo il modello
     judge_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
     
     structured_judge = judge_llm.with_structured_output(JudgeEvaluation)
@@ -47,11 +49,11 @@ def research_judge_tool(
             HumanMessage(content=human_message_content)
         ])
         
-
         fonti_valutate = evaluation.evaluated_sources
         fonti_selezionate = [f for f in fonti_valutate if f.is_selected]
         fonti_scartate = [f for f in fonti_valutate if not f.is_selected]
         
+        # Ordiniamo le fonti in ordine di indice di interesse
         fonti_selezionate.sort(key=lambda x: x.interestingness_score, reverse=True)
         
         output_lines = [
@@ -82,10 +84,8 @@ def research_judge_tool(
                 )
                 
         final_report = "\n".join(output_lines)
-        print(f"\n[DEBUG JUDGE TOOL - SUCCESSO]:\n{final_report}\n")
         
         return final_report
         
     except Exception as e:
-       print(f"\n[DEBUG JUDGE TOOL - CRASH CRITICO]: Dettaglio errore: {str(e)}\n")
-       return f"[ERRORE CRITICO GIUDICE FONTI]: Impossibile completare l'analisi. Dettaglio: {str(e)}"
+       return f"[JUDGE TOOL]: Impossibile completare l'analisi. Dettaglio: {str(e)}"

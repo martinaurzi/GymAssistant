@@ -13,7 +13,5 @@ rag_urls = [
     "https://www.my-personaltrainer.it/nutrizione/fabbisogno-proteico.html"
 ]
 
-print("Inizializzazione del RAG\n")
-
 if(rag_manager.populate_rag(rag_urls)):
     print(f"Documenti caricati in Chroma DB\n")
