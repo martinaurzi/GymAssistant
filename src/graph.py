@@ -306,7 +306,8 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm"]]:
 
         msg.append(HumanMessage(content=f"L'utente ha rifiutato la bozza del post {post_draft.title}. Usa questo feedback per riscrivere il post: {user_feedback}"))
 
-        update = {"messages": msg}
+        update = {"messages": msg,
+                  "post_draft": None}
 
     else:
         raise ValueError(f"Risposta non valida: {response}")
@@ -323,7 +324,7 @@ def should_continue(state: AgentState):
 
     if last_message.tool_calls:
         return "continue"
-    elif state.get("extracted_claims"):
+    elif state.get("extracted_claims") and state.get("post_draft"):
         return "save_to_knowledge_graph"
     else:
         return "format_article"
