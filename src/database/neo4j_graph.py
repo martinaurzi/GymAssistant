@@ -128,7 +128,7 @@ class EditorialKnowledgeGraphManager:
             } 
         
     def add_approved_post(self, post_draft: dict, requested_topic: str, matched_topic: str, claims: list, publish_date: str):
-        """Crea il post e lo associa sia al topic richiesto sia al topic affine trovato."""
+        """Crea il post e lo associa sia al topic richiesto sia al topic simile trovato."""
         
         # Generiamo l'embedding del topic principale dell'articolo
         topic_vector = self.embeddings.embed_query(requested_topic)
@@ -145,13 +145,13 @@ class EditorialKnowledgeGraphManager:
             createdAt: timestamp()
         })
 
-        // Associazione o creazione del Topic Principale richiesto dall'LLM
+        // Associazione o creazione del Topic principale richiesto dall'LLM
         MERGE (t:Topic {name: $requested_topic})
         ON CREATE SET t.embedding = $topic_embedding
         ON MATCH SET t.embedding = $topic_embedding 
         CREATE (p)-[:COVERS]->(t)
 
-        // Associazione condizionale al Topic Simile Preesistente
+        // Associazione condizionale al Topic simile preesistente
         CALL (p){ //per rendere disponibile p all'interno al posto di dover usare 2 volte WITH P
             WITH p
             WHERE $matched_topic IS NOT NULL 
