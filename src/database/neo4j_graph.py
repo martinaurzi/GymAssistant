@@ -37,7 +37,7 @@ class EditorialKnowledgeGraphManager:
         
     def get_kg_summary(self) -> str:
         """
-            Fase Topic Suggestion: Recupera lo stato attuale per il Planner.
+            Recupera lo stato attuale per il Planner.
 
             Ritorna gli ultimi post e tutti i topic coperti per evitare ripetizioni.
         """
@@ -128,7 +128,7 @@ class EditorialKnowledgeGraphManager:
             } 
         
     def add_approved_post(self, post_draft: dict, requested_topic: str, matched_topic: str, claims: list, publish_date: str):
-        """Crea il post e lo associa tramite :COVERS sia al topic richiesto sia al topic affine trovato."""
+        """Crea il post e lo associa sia al topic richiesto sia al topic affine trovato."""
         
         # Generiamo l'embedding del topic principale dell'articolo
         topic_vector = self.embeddings.embed_query(requested_topic)

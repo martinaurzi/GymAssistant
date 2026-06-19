@@ -122,7 +122,7 @@ Considerando tutta la cronologia dei messaggi, prendi tutte le informazioni racc
 In caso di contraddizione dai sempre la precedenza alle informazioni restituite dal rag_tool.
 
 **VINCOLO DI COERENZA EDITORIALE TASSATIVO**:
-Ecco le affermazioni storiche già presenti nel nostro database relative a questo argomento: {consistency_context}
+Ecco le affermazioni già presenti nel nostro database relative a questo argomento: {consistency_context}
 
 Durante la stesura della bozza finale, è assolutamente vietato contraddire o smentire i concetti scritti qui sopra(se presenti), in modo da preservare l'integrità e la coerenza della linea editoriale del blog.
 </Instructions>
