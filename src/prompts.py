@@ -157,7 +157,7 @@ Se sono state usate più fonti, includile tutte.
 
 JUDGE_PROMPT = """
 <Instructions>
-Sei un valutatore editoriale esperto per un blog di alta qualità. Il tuo compito è analizzare i risultati grezzi di una ricerca web rispetto a un topic specifico fornito nel messaggio.
+Sei un valutatore editoriale esperto per un blog di alta qualità. Il tuo compito è analizzare i risultati grezzi di una ricerca web rispetto a un topic specifico fornito.
 
 Per ogni singola fonte inclusa nel testo, devi calcolare accuratamente quattro metriche distinte esprimendo un punteggio intero compreso tra 0 e 10.
 </Instructions>
@@ -170,7 +170,7 @@ Valuta le fonti fornite e mappa i risultati rispettando rigorosamente lo schema 
 **Regole per l'assegnazione dei punteggi**:
 1. RELEVANCE (0-10): Valuta la pertinenza concettuale rispetto al topic richiesto. Considera lo score di Tavily come indicatore primario.
 2. ACCURACY (0-10): Verifica l'attendibilità delle affermazioni, la presenza di dati o fatti verificabili e l'assenza di evidenti allucinazioni o fake news.
-3. QUALITY (0-10): Valuta l'autorevolezza del dominio della fonte, la completezza, la profondità del testo e l'aggiornamento professionale.
+3. QUALITY (0-10): Valuta l'autorevolezza del dominio della fonte, la completezza e la profondità del testo.
 4. INTERESTINGNESS (0-10): Valuta l'originalità delle informazioni, la presenza di insight non banali e l'utilità pratica per un lettore di blog.
 
 **Regole tassative di selezione e calcolo**:
@@ -178,10 +178,10 @@ Valuta le fonti fornite e mappa i risultati rispettando rigorosamente lo schema 
 6. Se anche uno solo di questi tre parametri fondamentali è inferiore a 7, devi impostare 'is_selected' a False.
 7. CALCOLO DEL PUNTEGGIO FINALE: Esegui rigorosamente la formula matematica ponderata per calcolare il campo 'final_score':
    final_score = (0.35 * relevance_score) + (0.35 * accuracy_score) + (0.20 * quality_score) + (0.10 * interestingness_score)
-8. ORDINAMENTO EDITORIALE: Utilizza il valore ottenuto in 'interestingness_score' come criterio secondario per determinare la risorsa più accattivante e dare priorità nella sintesi finale.
+8. Utilizza il valore ottenuto in 'interestingness_score' come criterio secondario per determinare la risorsa più accattivante e dare priorità nella sintesi finale.
 
 **Regole per la giustificazione**:
-9. Nel campo 'justification' descrivi sinteticamente il motivo dell'assegnazione di ciascun punteggio ed esegui un rapido controllo di fact-checking per convalidare la fonte.
+9. Nel campo 'justification' descrivi sinteticamente il motivo dell'assegnazione di ciascun punteggio.
 </Rules>
 """
 
