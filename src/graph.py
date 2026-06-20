@@ -306,8 +306,10 @@ def hitl_review_post(state: AgentState) -> Command[Literal["llm"]]:
 
         msg.append(HumanMessage(content=f"L'utente ha rifiutato la bozza del post {post_draft.title}. Usa questo feedback per riscrivere il post: {user_feedback}"))
 
-        update = {"messages": msg,
-                  "post_draft": None}
+        update = {
+            "messages": msg,
+            "post_draft": None
+        }
 
     else:
         raise ValueError(f"Risposta non valida: {response}")
